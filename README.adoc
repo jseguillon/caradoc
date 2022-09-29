@@ -1,0 +1,42 @@
+= AsciiDoc README Template
+:doctype: article
+:description: Caradoc for Ansible creates Reports as asciidoc files
+:license-type: MIT
+:author: The Caradoc team
+:repository-url: https://github.com/jseguillon/caradoc
+:source-highlighter: rouge
+:rouge-style: github
+:!showtitle:
+:icons: font
+:toc: preamble
+
+ifdef::env-github[]
+:tip-caption: :bulb:
+:note-caption: :information_source:
+:important-caption: :heavy_exclamation_mark:
+:caution-caption: :fire:
+:warning-caption: :warning:
+endif::[]
+
+
+== About the Project
+TODO
+
+=== Usage
+
+-------
+ANSIBLE_CALLBACK_PLUGINS=/[path]/plugins/callback ansible-playbook -i tests/hosts tests/testplay.yml
+-------
+
+== Change Log
+See link:CHANGELOG.adoc[CHANGELOG].
+
+== License
+Distributed under the {license-type} License. See `LICENSE` for more information.
+
+
+== Contact
+{author}
+
+Project Link: {repository-url}
+
