@@ -1,0 +1,22 @@
+# TODO: add more localhost
+# TODO: add free mode + random sleep
+# TODO: test delegated
+- hosts: all
+  become: false
+  tasks:
+    - name: one
+      debug: msg=a
+      loop:
+        - a
+        - b
+    - name: two
+      debug: msg=x
+
+    # noname
+    - debug: msg=x
+
+- hosts: all
+  become: false
+  tasks:
+    - debug:
+    - fail: 

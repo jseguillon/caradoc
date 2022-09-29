@@ -1,0 +1,3 @@
+[all]
+host1 ansible_connection=local
+host2 ansible_connection=local
