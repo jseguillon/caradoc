@@ -22,6 +22,8 @@ from ansible.vars.clean import module_response_deepcopy, strip_internal_keys
 from ansible.template import Templar
 from ansible.utils.path import makedirs_safe
 from ansible.module_utils.common.text.converters import to_bytes
+from ansible.utils.unsafe_proxy import wrap_var
+from json import JSONEncoder
 import time
 
 DOCUMENTATION = """
@@ -35,7 +37,7 @@ description:
   - Create asciidoc reports of Ansible execution
 options:
     log_folder:
-        default: ./caradoc/
+        default: .caradoc/
         description: The folder where log files will be created.
         env:
             - name: ANSIBLE_LOG_FOLDER
@@ -70,6 +72,7 @@ class CallbackModule(CallbackBase):
     # FIXME deal with nolog (https://github.com/ansible/ansible/blob/3515b3c5fcf011ba9bb63fe069520c7d528e3c54/lib/ansible/executor/task_result.py#L131) 
     def __init__(self):
         super().__init__()
+        self.tasks = []
         self.log = logging.getLogger("caradoc.plugins.callback.default")
 
     def set_options(self, task_keys=None, var_options=None, direct=None):
@@ -78,10 +81,19 @@ class CallbackModule(CallbackBase):
     def v2_playbook_on_start(self, playbook):
         self.log_folder = self.get_option("log_folder")
 
-        # TODO: create a per-run uid directory
+        # Ensure base log folder exists
         if not os.path.exists(self.log_folder):
             makedirs_safe(self.log_folder)
 
+        # Create a per playbook directory
+        # FIXME: not good for git diff => prefer a upper directory then an id just like tasks
+        now = time.strftime("%Y%m%d-%H%M%S", time.localtime())
+        self.log_folder = os.path.join(self.log_folder, now)
+
+        if not os.path.exists(self.log_folder):
+            makedirs_safe(self.log_folder)
+
+        # Dump default statics adoc env and docinfo
         with open(os.path.join(self.log_folder, "env.adoc"), "wb") as fd:
             fd.write(to_bytes(CaradocTemplates.env))
 
@@ -89,9 +101,6 @@ class CallbackModule(CallbackBase):
             fd.write(to_bytes(CaradocTemplates.docinfo))
 
         self.log.debug("v2_playbook_on_start")
-        # TODO MVP: dump vars as adoc ? 
-        # TODO MVP: render global ifdev include for later import
-        # return self.playbook
         
         self._playbook=playbook
         return
@@ -106,7 +115,29 @@ class CallbackModule(CallbackBase):
         return ""
 
     def v2_playbook_on_task_start(self, task, is_conditional, handler=False):
+        # TODO: for task duration, see example on https://github.com/alikins/ansible/blob/devel/lib/ansible/plugins/callback/profile_tasks.py
+        name=self._get_new_task_name(task)
+        self.tasks.append({"task_name": name, "task": task, "start_time": time.time(), "uuid": task._uuid})
         return
+
+    # Check if couple of task name already referenced and managed a counter
+    def _get_new_task_name(self, task):
+        name=task._attributes["name"]
+        action=str(task.resolved_action)
+        name="no_name" if name == "" else name
+        name=name+"-"+action
+        
+        # TODO: only replacing spaces is probably not enough in some task name case
+        name=name.replace(" ", "_")
+
+        # TODO: Better algo shoud be found
+        found=False; count=1
+        # For each refered task: check if removing id after last found separator is found, if so: count
+        for i in self.tasks:
+            count = count + 1 if '-'.join(i["task_name"].split("-")[:-1]) == name else count
+        # Final name is name + separator + 
+        name=name+"-"+str(count)
+        return name
 
     def v2_runner_on_start(self, host, task):
         self.log.debug("v2_runner_on_start")
@@ -114,17 +145,19 @@ class CallbackModule(CallbackBase):
 
     def v2_runner_on_ok(self, result, **kwargs):
         self.log.debug("v2_runner_on_ok")
-        if result._task_fields['action']!="gather_facts":
-          self._save_task(result)
+        self._save_task(result)
 
     def v2_runner_on_unreachable(self, result, **kwargs):
         self.log.debug("v2_runner_on_unreachable")
+        self._save_task(result, failed=True)
 
     def v2_runner_on_failed(self, result, **kwargs):
         self.log.debug("v2_runner_on_failed")
+        self._save_task(result, failed=True)
 
     def v2_runner_on_skipped(self, result, **kwargs):
         self.log.debug("v2_runner_on_skipped")
+        self._save_task(result, failed=True)
 
     def v2_runner_item_on_ok(self, result):
         self.log.debug("v2_runner_item_on_ok")
@@ -146,14 +179,17 @@ class CallbackModule(CallbackBase):
         self.log.debug("v2_playbook_on_stats")
         # TODO: stats tables and maybe graphics
         self._save_play()
-    # TODO: may need some implementation of v2_runner_on_async_XXX ? 
 
-    def _template(self, loader, template, variables, target_path="."):
+    # TODO: may need some implementation of v2_runner_on_async_XXX also (ara does not implement anything) 
 
-        env_rel_path = "." # TODO: implement relative path to env file compute if dealing with sub-directories
+    # Render a caradoc template, including jinja common macros plus static include of env if asked
+    def _template(self, loader, template, variables, no_env=False):
         _templar = Templar(loader=loader, variables=variables)
 
-        template = CaradocTemplates.jinja_macros + "\n" + CaradocTemplates.common_adoc + "\n" + template
+        if not no_env:
+            template = CaradocTemplates.jinja_macros + "\n" + CaradocTemplates.common_adoc + "\n" + template
+        else: 
+            template = CaradocTemplates.jinja_macros + "\n"  + template
         return _templar.template(
             template,
             preserve_trailing_newlines=True,
@@ -161,22 +197,60 @@ class CallbackModule(CallbackBase):
             escape_backslashes=True
         )
 
-    def _save_task(self, result):
-        task=self._template(self._playbook.get_loader(), CaradocTemplates.task_details, 
-                             { "result": result._result })
+    # Get back task name by uiid then add result host
+    def _get_task_name_for_host(self,result):
+        for i in self.tasks:
+            if i["uuid"] == result._task._uuid:
+                name=i["task_name"]
+        
+        name=name+"-"+result._host.name
+        return name
 
-        # TODO and important point: because asciidoc is plain text we should try to ensure it is possible to git diff two runs. 
-        # This means we should not use some tasks uuids that would break this
-        # Proposed algorithm : create an id as <<host>>_underscored_task_name#[index]
-        # The index would be the nth time the <<host>>_underscored_task_name was used (starting at 1)
-        # for now it's just fixed 
-        # FIXME alspo beacause not all tasks have a name...
-        path = os.path.join(self.log_folder, "task_" + result._task_fields['name'] + ".adoc")
-        now = time.strftime(self.TIME_FORMAT, time.localtime())
+    # For a task name, will render raw and base templates
+    # Also create symlinks in timelines directory
+    def _render_task_result_templates(self,result,task_name, failed=False):
+        # TODO: a serializer may be better than this json tricky construction
+        # Also in final design may not need all of this an rely or links:[] (for host as an example)
+        results = strip_internal_keys(module_response_deepcopy(result._result))
+        jsonified = json.dumps(results, cls=AnsibleJSONEncoder, ensure_ascii=False, sort_keys=False)
+        json_result = { "result": 
+                        {
+                          "_result": results,
+                          "_task": {"_attributes": wrap_var(result._task._attributes)}, # Make unsafe so it will no try to render internal templates like arg {{ item }} in case of loop
+                          "_host": {"vars": result._host.vars, 
+                                    "_uuid": result._host._uuid, 
+                                    "name": result._host.name, 
+                                    "address": result._host.address, 
+                                    "implicit": result._host.implicit },
+                          "failed": failed,
+                        }, "env_rel_path": "..", "name": task_name
+        }
 
-        # TODO : create sub path if not exist (make separated function)
+        task=self._template(self._playbook.get_loader(), CaradocTemplates.task_raw, json_result, no_env=True)
+        self._save_as_file("raw/", task_name + ".json", task)
+
+        task=self._template(self._playbook.get_loader(), CaradocTemplates.task_details, json_result)
+        self._save_as_file("base/", task_name + ".adoc", task)
+
+        # TODO: create per host timeline
+        if not os.path.exists(self.log_folder+"/timeline/"):
+            makedirs_safe(self.log_folder+"/timeline/")
+        os.symlink("../base/" + task_name + ".adoc", self.log_folder+"/timeline/"+ str(len(self.tasks)) + " - " + task_name + ".adoc", )
+
+    def _save_task(self, result, failed=False):
+
+        # Get back name assigned to task uuid for consistent file naming
+        task_name = self._get_task_name_for_host(result)
+        self._render_task_result_templates(result,task_name, failed)
+ 
+    def _save_as_file(self,path,name,content):
+        path = os.path.join(self.log_folder, path) 
+        if not os.path.exists(path):
+            makedirs_safe(path)
+
+        path = os.path.join(path, name) 
         with open(path, "wb") as fd:
-            fd.write(to_bytes(task))
+            fd.write(to_bytes(content))
 
     def _save_play(self):
         # TODO: get from a self. remembered current playbook a dump lists, summarize etc..
@@ -187,53 +261,80 @@ class CallbackModule(CallbackBase):
 
         # TODO: same as _save_task TODO.
         path = os.path.join(self.log_folder, play_name + ".adoc")
-        now = time.strftime(self.TIME_FORMAT, time.localtime())
 
         # TODO : create sub path if not exist
         with open(path, "wb") as fd:
             fd.write(to_bytes(task))
-
 
 class CaradocTemplates:
     # Applied to any adoc template, ensure fragments can be viewed with proper display
 
     # this jinja section is include on each _template render
     jinja_macros='''
-{# TODOs: 
-    * a function that returns correct emoji for the status of a task
-    * a function to compute refs&links given a task name
-    * a funcion to map host to a color, usefull if we graph something in report
-    * ...
- #}
-{% macro task_label() -%}
-{% endmacro %}
+{%- macro task_status_label(task_changed, task_error) -%}
+{%- if not(task_changed) and not(task_error) -%}🟢
+{%- elif not(task_error) -%}🟠
+{%- elif task_error -%}🔴
+{%- endif -%}
+{%- endmacro %}
+//FIXME: skipped
+//FIXME: includes
+//TODO: diffs (https://github.com/ansible/ansible/blob/devel/lib/ansible/plugins/callback/__init__.py#L380)
 '''
     # injected in every produced adoc
     common_adoc='''
+ifndef::env-github[]
 include::{{ env_rel_path | default('.') }}/env.adoc[]
+//env_rel_path
+endif::[]
 '''
 
+    # Raw but well formated
+    task_raw='''
+{{ result | default({}) |to_nice_json }}
+'''
+
+    # Solo task adoc
+    # TODO: consider a jinja macro because code seems a bit duplicate
     task_details='''
-// TODO: inject status, name etc
-.🟠 Host y - 00:00:02 Duration [[host2_task,taskname]] <<task_uid1,🆙>>
-// TODO: use for loops to create the table. use a common jinja2 functions ?
-// TODO: beware of loops :)
+= {{ task_status_label(result._result.changed |default(False),result.failed |default(False) ) }} {{ result._host.name }} - {{ result._task._attributes.name | default("no name") }} - {{ result._task._attributes.action }} 
+:toc:
+
+link:../raw/{{ name + ".json" | urlencode }}[view raw]
+
+== Result 
 [%collapsible%open]
-======
-link:raw.txt[view raw]
-[cols="20,~a",autowidth]
-|=======
-| Result |
+=====
 [,json]
 -------
-{{ result | default({})|to_nice_json }}
+{{ result._result | default({}) |to_nice_json }}
 -------
-|=======
-======
+=====
+
+== Attributes
+.Attribute
+[%collapsible%open]
+=====
+[,json]
+-------
+{{ result._task._attributes | default({}) |to_nice_json }}
+-------
+=====
+
+== Host
+.Host
+[%collapsible%open]
+=====
+[,json]
+-------
+{{ result._host | default({}) |to_nice_json }}
+-------
+=====
 '''
 
     tasks_list='''
-== Playbook {{ play_name }} ! MOCKUP ! 
+// TODO: curently just a mockup
+== Playbook {{ play_name }}
 [vegalite]
 ....
 {
@@ -258,7 +359,6 @@ link:raw.txt[view raw]
 }
 ....
 
-// TODO: just a sample of what could be a render
 [cols="1,30a,1,1,~a,1",autowidth,stripes=hover]
 |====
 | 🟠 | host_1 | 14:46:47 | 00:00:02 | action 
@@ -293,26 +393,17 @@ link:raw.txt[view raw]
 //TODO 
 '''
 
+    # or only html 
+    env_html='''
+'''
+
+    # Mainlys tricks for kroki and vscode
     env='''
 :toclevels: 2
-:docinfo: shared,private-footer
-:source-highlighter: highlight.js
-:icons: font
-:backend: any
-// TODO: set option for kroki localhost or any url
+// TODO: set env var option for kroki localhost or any url
 :kroki-server-url: https://kroki.io
-ifdef::env-vscode[:relfilesuffix: .adoc]
-
-// TODO: better include a github.env ?
-ifdef::env-github[]
-:source-highlighter: rouge
-:rouge-style: github
-:!showtitle:
-:icons: font
-:tip-caption: :bulb:
-:note-caption: :information_source:
-:important-caption: :heavy_exclamation_mark:
-:caution-caption: :fire:
-:warning-caption: :warning:
+ifdef::env-vscode[]
+:relfilesuffix: .adoc
+:source-highlighter: highlight.js
 endif::[]
 '''

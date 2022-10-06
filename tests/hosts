@@ -1,3 +1,3 @@
 [all]
-host1 ansible_connection=local
-host2 ansible_connection=local
+host1 ansible_connection=local sleep_time=10
+host2 ansible_connection=local sleep_time=1

@@ -1,22 +1,130 @@
 # TODO: add more localhost
 # TODO: add free mode + random sleep
 # TODO: test delegated
+- name: First playbook
+  hosts: host1
+  tags: basic
+  tasks:
+    # move to limits test case  
+    - name: Task debug with the special - char in it's a name -
+      debug: msg=a
+
+    - name: Task debug with the special - char in it's a name -
+      debug: msg=a
+
+    - name: Task debug with a name
+      debug: msg=a
+
+    # Test two tasks same name
+    - name: Task debug with a name
+      debug: msg=b
+
+    # noname
+    - debug: msg=x
+
+    - name: Test a no_log 
+      debug: 
+        msg: "no one should see this"
+
+    - name: Test something is changed
+      debug: 
+        msg: something changed
+      changed_when: True
+
+    - name: Test an error
+      debug: 
+        msg: an ignored error
+      failed_when: True
+      ignore_errors: True
+
+    - name: Test a skip 
+      debug: 
+        msg: should be skipped
+      when: False
+
+    - name: Test an empty loop
+      debug: 
+        msg: "{{ item }}"
+      loop: []
+
+    - name: Loop of 3
+      debug: 
+        msg: "{{ item }}"
+      loop: 
+        - 1
+        - 2
+        - 3
+
+    - name: Set a fact
+      set_fact: 
+        myfact: fact
+
+    - name: Block get diffs
+      block:
+        - name: Create temporary build directory
+          ansible.builtin.tempfile:
+            state: directory
+            suffix: build
+
+        - name: Create temporary file
+          ansible.builtin.tempfile:
+            state: file
+            suffix: temp
+          register: tempfile_1
+
+        - name: Add a line to a file
+          ansible.builtin.lineinfile:
+            line: "a test to get a diff"
+            create: yes
+            path: "{{ tempfile_1.path }}"
+          when: tempfile_1.path is defined
+
+    - name: Do some include
+      include_tasks: tasks.yaml
+
+- import_playbook: playbook_import.yaml
+
+# Test parrallel 
 - hosts: all
+  name: parrallel
   become: false
+  tags: multi
   tasks:
     - name: one
       debug: msg=a
       loop:
         - a
         - b
-    - name: two
-      debug: msg=x
 
-    # noname
-    - debug: msg=x
+# Delegated
+- hosts: host1
+  become: false
+  tags: delegated
+  name: delegated
+  tasks:
+    - name: one
+      command:
+        cmd: echo 'hi'
+      delegate_to: host2
 
 - hosts: all
   become: false
+  name: free
+  strategy: free
+  tags: free
   tasks:
-    - debug:
+    - name: one
+      shell: 
+        cmd: "/bin/bash -c 'sleep {{ sleep_time }}'"
+    - name: two
+      command: 
+        cmd: /bin/bash -c 'sleep $(($RANDOM % 10))'
+    - name: three
+      shell: 
+        cmd: /bin/bash -c 'sleep $(($RANDOM % 10))'
+
+- hosts: all
+  become: false
+  tags: fail
+  tasks:
     - fail: 
