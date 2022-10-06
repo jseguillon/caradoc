@@ -1,0 +1,6 @@
+---
+- hosts: host1
+  tasks:
+    - name: Task from imported playbook
+      debug:
+        msg: Debug message from imported playbook
