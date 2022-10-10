@@ -1,6 +1,40 @@
 # TODO: add more localhost
 # TODO: add free mode + random sleep
 # TODO: test delegated
+# Twice same name to test robustness
+- name: Same playbook name
+  hosts: all
+  gather_facts: false
+  tags: play_names
+  tasks:
+    - name: Task debug with a name one
+      debug: msg=a
+
+    - name: Task debug with a name one
+      debug: msg=a
+
+- name: Same playbook name
+  hosts: all
+  gather_facts: false
+  tags: play_names
+  tasks:
+    - name: Task debug with a name two
+      debug: msg=a
+
+- hosts: host1
+  gather_facts: false
+  tags: play_names
+  tasks:
+    - name: Task debug with a name three
+      debug: msg=a
+
+- hosts: host1
+  gather_facts: false
+  tags: play_names
+  tasks:
+    - name: Task debug with a name four
+      debug: msg=a
+
 - name: First playbook
   hosts: host1
   tags: basic
@@ -96,35 +130,35 @@
         - a
         - b
 
-# Delegated
-- hosts: host1
-  become: false
-  tags: delegated
-  name: delegated
-  tasks:
-    - name: one
-      command:
-        cmd: echo 'hi'
-      delegate_to: host2
+# # Delegated
+# - hosts: host1
+#   become: false
+#   tags: delegated
+#   name: delegated
+#   tasks:
+#     - name: one
+#       command:
+#         cmd: echo 'hi'
+#       delegate_to: host2
 
-- hosts: all
-  become: false
-  name: free
-  strategy: free
-  tags: free
-  tasks:
-    - name: one
-      shell: 
-        cmd: "/bin/bash -c 'sleep {{ sleep_time }}'"
-    - name: two
-      command: 
-        cmd: /bin/bash -c 'sleep $(($RANDOM % 10))'
-    - name: three
-      shell: 
-        cmd: /bin/bash -c 'sleep $(($RANDOM % 10))'
+# - hosts: all
+#   become: false
+#   name: free
+#   strategy: free
+#   tags: free
+#   tasks:
+#     - name: one
+#       shell: 
+#         cmd: "/bin/bash -c 'sleep {{ sleep_time }}'"
+#     - name: two
+#       command: 
+#         cmd: /bin/bash -c 'sleep $(($RANDOM % 10))'
+#     - name: three
+#       shell: 
+#         cmd: /bin/bash -c 'sleep $(($RANDOM % 10))'
 
-- hosts: all
-  become: false
-  tags: fail
-  tasks:
-    - fail: 
+# - hosts: all
+#   become: false
+#   tags: fail
+#   tasks:
+#     - fail: 
