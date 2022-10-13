@@ -145,7 +145,8 @@ class CallbackModule(CallbackBase):
     # Check if couple of task name already referenced and managed a counter
     def _get_new_task_name(self, task):
         name=task._attributes["name"]
-        action=str(task.resolved_action)
+        action=task._attributes["action"]
+        # action=str(task.resolved_action)
         name="no_name" if name == "" else name
         name=name+"-"+action
         
@@ -281,11 +282,10 @@ class CallbackModule(CallbackBase):
     def _save_play(self):
         # TODO: compute a name per play with name and index just like tasks  "tasks": self.tasks,
         play_name=self.play["play_name"]
-        print(play_name)
-        # json_play={ "play_name": play_name, "env_rel_path": "..", "tasks": self.tasks}
+        json_play={ "play_name": play_name, "env_rel_path": "..", "tasks": self.tasks}
 
-        # play=self._template(self._playbook.get_loader(), CaradocTemplates.playbook, json_play)
-        # self._save_as_file("base/", play_name + ".adoc", play)
+        play=self._template(self._playbook.get_loader(), CaradocTemplates.playbook, json_play)
+        self._save_as_file("base/" + play_name + "/", "README.adoc", play)
 
     def _save_tasks_lists(self):
         # FIXME: compute a name per play with name and index just like tasks  "tasks": self.tasks,
@@ -389,6 +389,73 @@ include::{{ task_for_host}}.adoc[leveloffset=2]
 =====
 
 
+'''
+
+    playbook='''
+= PLAY: {{ play_name }}
+
+:toc:
+
+== Charts
+{%raw%}
+
+[cols="a,a,a",autowidth,stripes=hover]
+|====
+[vegalite]
+....
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "description": "A simple donut chart with embedded data.",
+  "title": "host1",
+  "data": {
+    "values": [
+      {"status": "changed", "value": 15},
+      {"status": "ok", "value": 30},
+      {"status": "skipped", "value": 20}
+    ]
+  },
+
+  "encoding": {
+    "theta": {"field": "value", "type": "quantitative", "stack": true},
+    "color": {
+      "field": "status",
+      "type": "nominal",
+      "scale": {
+        "domain": ["changed", "ok", "skipped", "failed"],
+        "range": ["rgb( 241, 196, 15 )", "rgb( 39, 174, 96 )", "rgb( 41, 128, 185 )", "rgb(231,76, 60)"]
+      }
+    }
+  },
+  "layer": [
+    {"mark": {"type": "arc", "innerRadius":30, "outerRadius": 80}},
+    {
+      "mark": {"type": "text", "radius": 95, "fontSize":22},
+      "encoding": {"text": {"field": "value", "type": "quantitative"}}
+    }
+  ]
+}
+
+....
+|====
+
+== Timeline
+
+[cols="1,30a,1,1,~a,1",autowidth,stripes=hover]
+|====
+| 🟢 | host1 | 22:03:47 | 00:00:02 | debug | <<task_uid1,🔍>>
+| 🟢 | host2 | 22:03:47 | 00:00:02 | debug | <<task_uid1,🔍>>
+
+|====
+....
+{%endraw%}
+
+== others
+
+=====
+[,json]
+-------
+{{ tasks }}
+-------
 '''
 
     tasks_list_header='''
