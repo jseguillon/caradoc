@@ -48,7 +48,7 @@ options:
 
 # Task modules for which Caradoc should save host facts like ARA (?)
 ANSIBLE_SETUP_MODULES = frozenset(
-    [   
+    [
         "setup",
         "ansible.builtin.setup",
         "ansible.legacy.setup",
@@ -66,10 +66,10 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = "awesome"
     CALLBACK_NAME = "caradoc_default"
-    
+
     TIME_FORMAT = "%b %d %Y %H:%M:%S"
 
-    # FIXME deal with nolog (https://github.com/ansible/ansible/blob/3515b3c5fcf011ba9bb63fe069520c7d528e3c54/lib/ansible/executor/task_result.py#L131) 
+    # FIXME deal with nolog (https://github.com/ansible/ansible/blob/3515b3c5fcf011ba9bb63fe069520c7d528e3c54/lib/ansible/executor/task_result.py#L131)
     def __init__(self):
         super().__init__()
         # tasks related to current play
@@ -106,7 +106,7 @@ class CallbackModule(CallbackBase):
             fd.write(to_bytes(CaradocTemplates.docinfo))
 
         self.log.debug("v2_playbook_on_start")
-        
+
         self._playbook=playbook
         return
 
@@ -116,7 +116,7 @@ class CallbackModule(CallbackBase):
         # FIXME: kust like tasks please normalize
         play_name=play.name.replace(" ", "_")
         if play.name in self.play_names_count:
-            self.play_names_count[play.name] = self.play_names_count[play.name] + 1 
+            self.play_names_count[play.name] = self.play_names_count[play.name] + 1
             play_name=play.name + "-" + str(self.play_names_count[play.name])
         else:
             self.play_names_count[play.name] = 1
@@ -149,7 +149,7 @@ class CallbackModule(CallbackBase):
         # action=str(task.resolved_action)
         name="no_name" if name == "" else name
         name=name+"-"+action
-        
+
         # TODO: only replacing spaces is probably not enough in some task name case
         name=name.replace(" ", "_")
 
@@ -158,7 +158,7 @@ class CallbackModule(CallbackBase):
         # For each refered task: check if removing id after last found separator is found, if so: count
         for i in self.tasks:
             count = count + 1 if '-'.join(i["task_name"].split("-")[:-1]) == name else count
-        # Final name is name + separator + 
+        # Final name is name + separator +
         name=name+"-"+str(count)
         return name
 
@@ -204,7 +204,7 @@ class CallbackModule(CallbackBase):
         self._save_play()
         # TODO: stats tables and maybe graphics
 
-    # TODO: may need some implementation of v2_runner_on_async_XXX also (ara does not implement anything) 
+    # TODO: may need some implementation of v2_runner_on_async_XXX also (ara does not implement anything)
 
     # Render a caradoc template, including jinja common macros plus static include of env if asked
     def _template(self, loader, template, variables, no_env=False):
@@ -212,7 +212,7 @@ class CallbackModule(CallbackBase):
 
         if not no_env:
             template = CaradocTemplates.jinja_macros + "\n" + CaradocTemplates.common_adoc + "\n" + template
-        else: 
+        else:
             template = CaradocTemplates.jinja_macros + "\n"  + template
         return _templar.template(
             template,
@@ -235,31 +235,33 @@ class CallbackModule(CallbackBase):
         # TODO: a serializer may be better than this json tricky construction
         # Also in final design may not need all of this an rely or links:[] (for host as an example)
         results = strip_internal_keys(module_response_deepcopy(result._result))
+
         jsonified = json.dumps(results, cls=AnsibleJSONEncoder, ensure_ascii=False, sort_keys=False)
-        json_result = { "result": 
+        json_result = { "result":
                         {
-                          "_result": results,
-                          "_task": {"_attributes": wrap_var(result._task._attributes)}, # Make unsafe so it will no try to render internal templates like arg {{ item }} in case of loop
-                          "_host": {"vars": result._host.vars, 
-                                    "_uuid": result._host._uuid, 
-                                    "name": result._host.name, 
-                                    "address": result._host.address, 
+                          "_result": results, # FIXME: also attributes may have template => make unsaffe
+                          "_task": {"_attributes": wrap_var(result._task._attributes)}, # Make unsafe with wrap_vars so it will no try to render internal templates like arg {{ item }} in case of loop
+                          "_host": {"vars": result._host.vars,
+                                    "_uuid": result._host._uuid,
+                                    "name": result._host.name,
+                                    "address": result._host.address,
                                     "implicit": result._host.implicit },
                           "failed": failed,
                           "play_name": self.play["play_name"],
-                        }, "env_rel_path": "../../../..", "name": task_for_host_name, "task_name": task_name
+                        }, "env_rel_path": "../../..", "name": task_for_host_name, "task_name": task_name
         }
 
         task=self._template(self._playbook.get_loader(), CaradocTemplates.task_raw, json_result, no_env=True)
-        self._save_as_file("base/" + self.play["play_name"] + "/tasks/" + task_name + "/raw/", task_for_host_name + ".json", task)
+        self._save_as_file("base/" + self.play["play_name"] + "/" + task_name + "/raw/", task_for_host_name + ".json", task)
 
         task=self._template(self._playbook.get_loader(), CaradocTemplates.task_details, json_result)
-        self._save_as_file("base/" + self.play["play_name"] + "/tasks/" + task_name, task_for_host_name + ".adoc", task)
+        self._save_as_file("base/" + self.play["play_name"] + "/" + task_name, task_for_host_name + ".adoc", task)
 
         # TODO: create per host timeline
-        if not os.path.exists(self.log_folder+"/timeline/"):
-            makedirs_safe(self.log_folder+"/timeline/")
-        os.symlink("../base/" + self.play["play_name"] + "/tasks/" + task_name + "/" + task_for_host_name + ".adoc", self.log_folder+"/timeline/"+ str(self.task_end_count) + " - " + task_name + ".adoc", )
+        # FIXME: raw link non ok when showinf task via symlink
+        if not os.path.exists(self.log_folder+"/timeline/hosts/all"):
+            makedirs_safe(self.log_folder+"/timeline/hosts/all")
+        os.symlink("../../../base/" + self.play["play_name"] + "/" + task_name + "/" + task_for_host_name + ".adoc", self.log_folder+"/timeline/hosts/all/"+ str(self.task_end_count) + " - " + task_name + ".adoc", )
 
     def _save_task(self, result, failed=False):
         # Get back name assigned to task uuid for consistent file naming
@@ -269,20 +271,20 @@ class CallbackModule(CallbackBase):
         task["results"].append(task_for_host_name)
         self.task_end_count=self.task_end_count+1
         self._render_task_result_templates(result, task_for_host_name, task_name, failed)
- 
+
     def _save_as_file(self,path,name,content):
         path = os.path.join(self.log_folder, path)
         if not os.path.exists(path):
             makedirs_safe(path)
 
-        path = os.path.join(path, name) 
+        path = os.path.join(path, name)
         with open(path, "wb") as fd:
             fd.write(to_bytes(content))
 
     def _save_play(self):
         # TODO: compute a name per play with name and index just like tasks  "tasks": self.tasks,
         play_name=self.play["play_name"]
-        json_play={ "play_name": play_name, "env_rel_path": "..", "tasks": self.tasks}
+        json_play={ "play_name": play_name, "env_rel_path": "../..", "tasks": self.tasks}
 
         play=self._template(self._playbook.get_loader(), CaradocTemplates.playbook, json_play)
         self._save_as_file("base/" + play_name + "/", "README.adoc", play)
@@ -291,12 +293,12 @@ class CallbackModule(CallbackBase):
         # FIXME: compute a name per play with name and index just like tasks  "tasks": self.tasks,
         play_name="playname"
         for i in self.tasks:
-            json_task_lists={"env_rel_path": "../../../..", "task": i}
+            json_task_lists={"env_rel_path": "../../..", "task": i}
             print(json_task_lists)
             play=self._template(self._playbook.get_loader(), CaradocTemplates.tasks_list, json_task_lists)
-            
+
             # TODO: same as _save_task TODO.
-            self._save_as_file("base/" + self.play["play_name"] + "/tasks/"+i["task_name"]+"/", "README.adoc", play)
+            self._save_as_file("base/" + self.play["play_name"] + "/" + i["task_name"]+"/", "README.adoc", play)
 
 class CaradocTemplates:
     # Applied to any adoc template, ensure fragments can be viewed with proper display
@@ -330,14 +332,13 @@ endif::[]
     # TODO: consider a jinja macro because code seems a bit duplicate
     # TODO: would be cool if by default is open even from include but only if few lines (can we compute number of lines ?)
     task_details='''
-= {{ task_status_label(result._result.changed |default(False),result.failed |default(False) ) }} {{ result._host.name }} - {{ result._task._attributes.name | default("no name") }} - {{ result._task._attributes.action }} 
+= {{ task_status_label(result._result.changed |default(False),result.failed |default(False) ) }} {{ result._host.name }} - {{ result._task._attributes.name | default("no name") }} - {{ result._task._attributes.action }}
 :toc:
 
-link:./raw/{{ task_name + "/" + name + ".json" | urlencode }}[view raw]
+link:./raw/{{ name + ".json" | urlencode }}[view raw]
 
-ifndef::collapsible_close[== Result ]
-ifndef::collapsible_close[[%collapsible%open]]
-ifdef::collapsible_close[[%collapsible]]
+== Result
+
 =====
 [,json]
 -------
@@ -345,11 +346,16 @@ ifdef::collapsible_close[[%collapsible]]
 -------
 =====
 
-ifndef::collapsible_close[== Attributes]
-.Attribute
+== Attributes
+[cols="10,~",autowidth,stripes=hover]
+|====
+| action | {{ result._task._attributes["action"] }}
+| become | {{ result._task._attributes["become"] }}
+| tags | {{ result._task._attributes["tags"] }}
+|====
 
-ifndef::collapsible_close[[%collapsible%open]]
-ifdef::collapsible_close[[%collapsible]]
+.view all
+[%collapsible]
 =====
 [,json]
 -------
@@ -357,10 +363,14 @@ ifdef::collapsible_close[[%collapsible]]
 -------
 =====
 
-ifndef::collapsible_close[== Host]
-.Host
-ifndef::collapsible_close[[%collapsible%open]]
-ifdef::collapsible_close[[%collapsible]]
+== Host
+|====
+| name | {{ result._host["name"] }}
+| address | {{ result._host["address"] }}
+|====
+
+.view all
+[%collapsible]
 =====
 [,json]
 -------
@@ -369,16 +379,14 @@ ifdef::collapsible_close[[%collapsible]]
 =====
 '''
 
+    # FIXME : keep original name of task (without file format replace ) for better search and render
+    # FIXME: need to be ordered by host name for stable and minimize diff
     tasks_list='''
-== {{ task.task_name }}
+= {{ task.task_name }}
 
 {% for task_for_host in task.results | default({}) %}
-[%collapsible%]
-:collapsible_close: yes
-include::{{ task_for_host}}.adoc[leveloffset=2]
-
+include::{{ task_for_host}}.adoc[leveloffset=1]
 {%endfor%}
-
 
 == others
 =====
@@ -387,8 +395,6 @@ include::{{ task_for_host}}.adoc[leveloffset=2]
 {{ task }}
 -------
 =====
-
-
 '''
 
     playbook='''
@@ -466,10 +472,10 @@ include::{{ task_for_host}}.adoc[leveloffset=2]
 '''
 
     docinfo='''
-//TODO 
+//TODO
 '''
 
-    # or only html 
+    # or only html
     env_html='''
 '''
 
