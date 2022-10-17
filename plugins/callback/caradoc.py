@@ -73,9 +73,14 @@ class CallbackModule(CallbackBase):
     def __init__(self):
         super().__init__()
         # tasks related to current play
-        self.tasks = []
-        self.play_names_count = dict()
+        self.tasks = dict()
+        # Current playbook running
         self.play=None
+
+        # Computed file names may exist in more than one intance => tack them
+        self.tasks_names_count= dict()
+        self.play_names_count = dict()
+
         # global task count
         self.task_end_count=0
         self.log = logging.getLogger("caradoc.plugins.callback.default")
@@ -127,7 +132,7 @@ class CallbackModule(CallbackBase):
             # FIXME: cannot loose track of file else with no more can unique index
             # =so currently tasks are not cleaned
             self._save_tasks_lists()
-            self.tasks=[]
+            self.tasks=dict()
         self.play = {"play_name": play_name, "play": play}
         return
 
@@ -139,27 +144,29 @@ class CallbackModule(CallbackBase):
     def v2_playbook_on_task_start(self, task, is_conditional, handler=False):
         # TODO: for task duration, see example on https://github.com/alikins/ansible/blob/devel/lib/ansible/plugins/callback/profile_tasks.py
         name=self._get_new_task_name(task)
-        self.tasks.append({"task_name": name, "start_time": str(time.time()), "uuid": task._uuid, "results": [] })
+        self.tasks[task._uuid] = {
+            "task_name": name,
+            "path": "base/" + self.play["play_name"] + "/" + name,
+            "start_time": str(time.time()), "results": {}
+        }
         return
 
     # Check if couple of task name already referenced and managed a counter
     def _get_new_task_name(self, task):
         name=task._attributes["name"]
+        # TODO: track resolved action
         action=task._attributes["action"]
-        # action=str(task.resolved_action)
         name="no_name" if name == "" else name
         name=name+"-"+action
 
         # TODO: only replacing spaces is probably not enough in some task name case
         name=name.replace(" ", "_")
 
-        # TODO: Better algo shoud be found
-        found=False; count=1
-        # For each refered task: check if removing id after last found separator is found, if so: count
-        for i in self.tasks:
-            count = count + 1 if '-'.join(i["task_name"].split("-")[:-1]) == name else count
-        # Final name is name + separator +
-        name=name+"-"+str(count)
+        if name in self.tasks_names_count:
+            self.tasks_names_count[name] = self.tasks_names_count[name] + 1
+            name=name + "-" + str(self.tasks_names_count[name])
+        else:
+            self.tasks_names_count[name] = 1
         return name
 
     def v2_runner_on_start(self, host, task):
@@ -168,19 +175,23 @@ class CallbackModule(CallbackBase):
 
     def v2_runner_on_ok(self, result, **kwargs):
         self.log.debug("v2_runner_on_ok")
-        self._save_task(result)
+        self._save_task(result, "ok")
 
     def v2_runner_on_unreachable(self, result, **kwargs):
         self.log.debug("v2_runner_on_unreachable")
-        self._save_task(result, failed=True)
+        self._save_task(result, "unreachable")
 
     def v2_runner_on_failed(self, result, **kwargs):
         self.log.debug("v2_runner_on_failed")
-        self._save_task(result, failed=True)
+
+        if kwargs.get('ignore_errors', False):
+            self._save_task(result, "ignored_failed")
+        else:
+            self._save_task(result, "failed")
 
     def v2_runner_on_skipped(self, result, **kwargs):
         self.log.debug("v2_runner_on_skipped")
-        self._save_task(result, failed=True)
+        self._save_task(result, "skipped")
 
     def v2_runner_item_on_ok(self, result):
         self.log.debug("v2_runner_item_on_ok")
@@ -194,6 +205,7 @@ class CallbackModule(CallbackBase):
         # from Ara: result._task.delegate_to can end up being a variable from this hook, don't save it.
         # https://github.com/ansible/ansible/issues/75339
 
+    # TODO: track this event ?
     def v2_playbook_on_include(self, included_file):
         self.log.debug("v2_playbook_on_include")
         pass
@@ -202,7 +214,6 @@ class CallbackModule(CallbackBase):
         self.log.debug("v2_playbook_on_stats")
         self._save_tasks_lists()
         self._save_play()
-        # TODO: stats tables and maybe graphics
 
     # TODO: may need some implementation of v2_runner_on_async_XXX also (ara does not implement anything)
 
@@ -221,21 +232,14 @@ class CallbackModule(CallbackBase):
             escape_backslashes=True
         )
 
-    # Get back task name by uiid then add result host
-    def _get_task_by_uid(self,result):
-        # TODO: better algo
-        for i in self.tasks:
-            if i["uuid"] == result._task._uuid:
-                name=i["task_name"]
-        return i
-
     # For a task name, will render raw and base templates
     # Also create symlinks in timelines directory
-    def _render_task_result_templates(self,result, task_for_host_name, task_name, failed=False):
+    def _render_task_result_templates(self,result, task_name, status):
         # TODO: a serializer may be better than this json tricky construction
         # Also in final design may not need all of this an rely or links:[] (for host as an example)
         results = strip_internal_keys(module_response_deepcopy(result._result))
-
+        current_task = self.tasks[result._task._uuid]
+        internal_result = current_task["results"][result._host.name]
         jsonified = json.dumps(results, cls=AnsibleJSONEncoder, ensure_ascii=False, sort_keys=False)
         json_result = { "result":
                         {
@@ -246,31 +250,40 @@ class CallbackModule(CallbackBase):
                                     "name": result._host.name,
                                     "address": result._host.address,
                                     "implicit": result._host.implicit },
-                          "failed": failed,
+                          "status": status,
                           "play_name": self.play["play_name"],
-                        }, "env_rel_path": "../../..", "name": task_for_host_name, "task_name": task_name
+                        }, "env_rel_path": "../../..", "name": internal_result["filename"], "task_name": task_name
         }
 
+        # FIXME: refacto with vars please
         task=self._template(self._playbook.get_loader(), CaradocTemplates.task_raw, json_result, no_env=True)
-        self._save_as_file("base/" + self.play["play_name"] + "/" + task_name + "/raw/", task_for_host_name + ".json", task)
+        self._save_as_file(current_task["path"] + "/raw/", internal_result["filename"] + ".json", task)
 
         task=self._template(self._playbook.get_loader(), CaradocTemplates.task_details, json_result)
-        self._save_as_file("base/" + self.play["play_name"] + "/" + task_name, task_for_host_name + ".adoc", task)
+        self._save_as_file(current_task["path"], internal_result["filename"] + ".adoc", task)
+
+        # FIXME: also render task README. Why ? to get README ready as soon as one host ended task
 
         # TODO: create per host timeline
         # FIXME: raw link non ok when showinf task via symlink
         if not os.path.exists(self.log_folder+"/timeline/hosts/all"):
             makedirs_safe(self.log_folder+"/timeline/hosts/all")
-        os.symlink("../../../base/" + self.play["play_name"] + "/" + task_name + "/" + task_for_host_name + ".adoc", self.log_folder+"/timeline/hosts/all/"+ str(self.task_end_count) + " - " + task_name + ".adoc", )
+        os.symlink("../../../base/" + self.play["play_name"] + "/" + task_name + "/" + internal_result["filename"] + ".adoc", self.log_folder+"/timeline/hosts/all/"+ str(self.task_end_count) + " - " + task_name + ".adoc", )
 
-    def _save_task(self, result, failed=False):
+    # FIXME: transfert any status
+    def _save_task(self, result, status="ok"):
         # Get back name assigned to task uuid for consistent file naming
-        task=self._get_task_by_uid(result)
+        # FIXME: save result status + time end etc...
+        task=self.tasks[result._task._uuid]
+
         task_name = task["task_name"]
-        task_for_host_name=task_name+"-"+result._host.name
-        task["results"].append(task_for_host_name)
+        task["results"][result._host.name] = {
+            "filename": task_name + "-" + result._host.name,
+            "status": status
+            }
+
         self.task_end_count=self.task_end_count+1
-        self._render_task_result_templates(result, task_for_host_name, task_name, failed)
+        self._render_task_result_templates(result, task_name, status)
 
     def _save_as_file(self,path,name,content):
         path = os.path.join(self.log_folder, path)
@@ -284,34 +297,33 @@ class CallbackModule(CallbackBase):
     def _save_play(self):
         # TODO: compute a name per play with name and index just like tasks  "tasks": self.tasks,
         play_name=self.play["play_name"]
+
         json_play={ "play_name": play_name, "env_rel_path": "../..", "tasks": self.tasks}
 
         play=self._template(self._playbook.get_loader(), CaradocTemplates.playbook, json_play)
         self._save_as_file("base/" + play_name + "/", "README.adoc", play)
 
     def _save_tasks_lists(self):
-        # FIXME: compute a name per play with name and index just like tasks  "tasks": self.tasks,
-        play_name="playname"
         for i in self.tasks:
-            json_task_lists={"env_rel_path": "../../..", "task": i}
-            print(json_task_lists)
+            json_task_lists={"env_rel_path": "../../..", "task": self.tasks[i]}
             play=self._template(self._playbook.get_loader(), CaradocTemplates.tasks_list, json_task_lists)
 
             # TODO: same as _save_task TODO.
-            self._save_as_file("base/" + self.play["play_name"] + "/" + i["task_name"]+"/", "README.adoc", play)
+            self._save_as_file("base/" + self.play["play_name"] + "/" + self.tasks[i]["task_name"]+"/", "README.adoc", play)
 
 class CaradocTemplates:
     # Applied to any adoc template, ensure fragments can be viewed with proper display
 
     # this jinja section is include on each _template render
-# //FIXME: skipped
-# //FIXME: includes
 # //TODO: diffs (https://github.com/ansible/ansible/blob/devel/lib/ansible/plugins/callback/__init__.py#L380)
     jinja_macros='''
-{%- macro task_status_label(task_changed, task_error) -%}
-{%- if not(task_changed) and not(task_error) -%}🟢
-{%- elif not(task_error) -%}🟠
-{%- elif task_error -%}🔴
+{%- macro task_status_label(task_changed, status) -%}
+{%- if not(task_changed) and status == "ok" -%}🟢
+{%- elif status == "ok" -%}🟠
+{%- elif status == "failed" -%}🔴
+{%- elif status == "ignored_failed" -%}pass:[<s>🔴</s>]🔵
+{%- elif status == "skipped" -%}🔵
+{%- elif status == "unreachable" -%}💀
 {%- endif -%}
 {%- endmacro %}
 '''
@@ -331,8 +343,11 @@ endif::[]
     # Solo task adoc
     # TODO: consider a jinja macro because code seems a bit duplicate
     # TODO: would be cool if by default is open even from include but only if few lines (can we compute number of lines ?)
+    # TODO: result => extract usefull values (msg if changed, skip_reason if skipped, error if error(?), others to be collected) and make the rest collapse
+    # TODO: host: show vars "ansible_host", "inventory_file" and "inventory_dir" if exists
+    # TODO: host: remove or externalize in meta: "_uuid" for git diff possible
     task_details='''
-= {{ task_status_label(result._result.changed |default(False),result.failed |default(False) ) }} {{ result._host.name }} - {{ result._task._attributes.name | default("no name") }} - {{ result._task._attributes.action }}
+= {{ task_status_label(result._result.changed |default(False),result.status ) }} {{ result._host.name }} - {{ result._task._attributes.name | default("no name") }} - {{ result._task._attributes.action }}
 :toc:
 
 link:./raw/{{ name + ".json" | urlencode }}[view raw]
@@ -385,7 +400,7 @@ link:./raw/{{ name + ".json" | urlencode }}[view raw]
 = {{ task.task_name }}
 
 {% for task_for_host in task.results | default({}) %}
-include::{{ task_for_host}}.adoc[leveloffset=1]
+include::{{ task.results[task_for_host].filename }}.adoc[leveloffset=1]
 {%endfor%}
 
 == others
