@@ -23,6 +23,7 @@ from ansible.template import Templar
 from ansible.utils.path import makedirs_safe
 from ansible.module_utils.common.text.converters import to_bytes
 from ansible.utils.unsafe_proxy import wrap_var
+import re
 from json import JSONEncoder
 import time
 
@@ -119,10 +120,10 @@ class CallbackModule(CallbackBase):
         self.log.debug("v2_playbook_on_play_start")
 
         # FIXME: kust like tasks please normalize
-        play_name=play.name.replace(" ", "_")
+        play_name=re.sub(r"[^0-9a-zA-Z_\-.]", "_", play.name)
         if play.name in self.play_names_count:
             self.play_names_count[play.name] = self.play_names_count[play.name] + 1
-            play_name=play.name + "-" + str(self.play_names_count[play.name])
+            play_name=play_name + "-" + str(self.play_names_count[play.name])
         else:
             self.play_names_count[play.name] = 1
 
@@ -159,8 +160,7 @@ class CallbackModule(CallbackBase):
         name="no_name" if name == "" else name
         name=name+"-"+action
 
-        # TODO: only replacing spaces is probably not enough in some task name case
-        name=name.replace(" ", "_")
+        name=re.sub(r"[^0-9a-zA-Z_\-.]", "_", name)
 
         if name in self.tasks_names_count:
             self.tasks_names_count[name] = self.tasks_names_count[name] + 1
