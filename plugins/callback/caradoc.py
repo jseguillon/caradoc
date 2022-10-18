@@ -175,7 +175,11 @@ class CallbackModule(CallbackBase):
 
     def v2_runner_on_ok(self, result, **kwargs):
         self.log.debug("v2_runner_on_ok")
-        self._save_task(result, "ok")
+
+        if result._result["changed"]:
+            self._save_task(result, "changed")
+        else:
+            self._save_task(result, "ok")
 
     def v2_runner_on_unreachable(self, result, **kwargs):
         self.log.debug("v2_runner_on_unreachable")
@@ -275,6 +279,10 @@ class CallbackModule(CallbackBase):
         # Get back name assigned to task uuid for consistent file naming
         # FIXME: save result status + time end etc...
         task=self.tasks[result._task._uuid]
+
+        if result._host.name not in self.hosts_results:
+            self.hosts_results[result._host.name] = {"changed": 0, "ok": 0, "failed": 0, "skipped":0, "ignored_failed": 0}
+        self.hosts_results[result._host.name][status] = self.hosts_results[result._host.name][status] + 1
 
         task_name = task["task_name"]
         task["results"][result._host.name] = {
