@@ -39,7 +39,7 @@
   hosts: host1
   tags: basic
   tasks:
-    # move to limits test case  
+    # move to limits test case
     - name: Task debug with the special - char in it's a name -
       debug: msg=a
 
@@ -56,41 +56,41 @@
     # noname
     - debug: msg=x
 
-    - name: Test a no_log 
-      debug: 
+    - name: Test a no_log
+      debug:
         msg: "no one should see this"
 
     - name: Test something is changed
-      debug: 
+      debug:
         msg: something changed
       changed_when: True
 
     - name: Test an error
-      debug: 
+      debug:
         msg: an ignored error
       failed_when: True
       ignore_errors: True
 
-    - name: Test a skip 
-      debug: 
+    - name: Test a skip
+      debug:
         msg: should be skipped
       when: False
 
     - name: Test an empty loop
-      debug: 
+      debug:
         msg: "{{ item }}"
       loop: []
 
     - name: Loop of 3
-      debug: 
+      debug:
         msg: "{{ item }}"
-      loop: 
+      loop:
         - 1
         - 2
         - 3
 
     - name: Set a fact
-      set_fact: 
+      set_fact:
         myfact: fact
 
     - name: Block get diffs
@@ -118,7 +118,7 @@
 
 - import_playbook: playbook_import.yaml
 
-# Test parrallel 
+# Test parrallel
 - hosts: all
   name: parrallel
   become: false
@@ -148,17 +148,17 @@
 #   tags: free
 #   tasks:
 #     - name: one
-#       shell: 
+#       shell:
 #         cmd: "/bin/bash -c 'sleep {{ sleep_time }}'"
 #     - name: two
-#       command: 
+#       command:
 #         cmd: /bin/bash -c 'sleep $(($RANDOM % 10))'
 #     - name: three
-#       shell: 
+#       shell:
 #         cmd: /bin/bash -c 'sleep $(($RANDOM % 10))'
 
 # - hosts: all
 #   become: false
 #   tags: fail
 #   tasks:
-#     - fail: 
+#     - fail:
