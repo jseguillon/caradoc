@@ -69,12 +69,13 @@ class CallbackModule(CallbackBase):
     CALLBACK_NAME = "caradoc_default"
 
     TIME_FORMAT = "%b %d %Y %H:%M:%S"
-
+    _host_result_struct = {"changed": 0, "ok": 0, "failed": 0, "skipped":0, "ignored_failed": 0}
     # FIXME deal with nolog (https://github.com/ansible/ansible/blob/3515b3c5fcf011ba9bb63fe069520c7d528e3c54/lib/ansible/executor/task_result.py#L131)
     def __init__(self):
         super().__init__()
         # tasks related to current play
         self.tasks = dict()
+        self.hosts_results = {"all": self._host_result_struct.copy() }
         # Current playbook running
         self.play=None
 
@@ -134,6 +135,7 @@ class CallbackModule(CallbackBase):
             # =so currently tasks are not cleaned
             self._save_tasks_lists()
             self.tasks=dict()
+            self.hosts_results = {"all": self._host_result_struct.copy() }
         self.play = {"play_name": play_name, "play": play}
         return
 
@@ -281,8 +283,11 @@ class CallbackModule(CallbackBase):
         task=self.tasks[result._task._uuid]
 
         if result._host.name not in self.hosts_results:
-            self.hosts_results[result._host.name] = {"changed": 0, "ok": 0, "failed": 0, "skipped":0, "ignored_failed": 0}
+            self.hosts_results[result._host.name] = self._host_result_struct.copy()
         self.hosts_results[result._host.name][status] = self.hosts_results[result._host.name][status] + 1
+
+        # TODO: also count per groups ?
+        self.hosts_results["all"][status] = self.hosts_results["all"][status] + 1
 
         task_name = task["task_name"]
         task["results"][result._host.name] = {
@@ -306,7 +311,7 @@ class CallbackModule(CallbackBase):
         # TODO: compute a name per play with name and index just like tasks  "tasks": self.tasks,
         play_name=self.play["play_name"]
 
-        json_play={ "play_name": play_name, "env_rel_path": "../..", "tasks": self.tasks}
+        json_play={ "play_name": play_name, "env_rel_path": "../..", "tasks": self.tasks, "hosts_results": self.hosts_results}
 
         play=self._template(self._playbook.get_loader(), CaradocTemplates.playbook, json_play)
         self._save_as_file("base/" + play_name + "/", "README.adoc", play)
@@ -426,32 +431,39 @@ include::{{ task.results[task_for_host].filename }}.adoc[leveloffset=1]
 :toc:
 
 == Charts
-{%raw%}
 
-[cols="a,a,a",autowidth,stripes=hover]
+
+{% set rows = hosts_results | list | length  %}
+{% set rows = 3 if rows >=3 else rows%}
+[cols="
+{%- for i in range(rows) %}
+a{% if loop.index != loop.length %},{% endif %}
+{%- endfor -%}
+"]
+
 |====
-[vegalite]
+{% for host in hosts_results %}
+|
+[vegalite,format="svg",opts=interactive]
 ....
 {
   "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
-  "description": "A simple donut chart with embedded data.",
-  "title": "host1",
+  "title": "{{ host }}",
   "data": {
-    "values": [
-      {"status": "changed", "value": 15},
-      {"status": "ok", "value": 30},
-      {"status": "skipped", "value": 20}
-    ]
+    "values": {{ hosts_results[host]  | dict2items(key_name='status') | to_json  }}
   },
-
+  "transform": [
+    {
+      "filter": "datum.value > 0"
+    }],
   "encoding": {
     "theta": {"field": "value", "type": "quantitative", "stack": true},
     "color": {
       "field": "status",
       "type": "nominal",
       "scale": {
-        "domain": ["changed", "ok", "skipped", "failed"],
-        "range": ["rgb( 241, 196, 15 )", "rgb( 39, 174, 96 )", "rgb( 41, 128, 185 )", "rgb(231,76, 60)"]
+        "domain": ["changed", "ok", "skipped", "failed", "ignored_failed"],
+        "range": ["rgb( 241, 196, 15 )", "rgb( 39, 174, 96 )", "rgb( 41, 128, 185 )", "rgb(231,76, 60)", "rgb(107, 91, 149)"]
       }
     }
   },
@@ -463,8 +475,11 @@ include::{{ task.results[task_for_host].filename }}.adoc[leveloffset=1]
     }
   ]
 }
-
 ....
+{% endfor %}
+{%- for i in range(hosts_results | list | length % rows) %}
+|
+{% endfor %}
 |====
 
 == Timeline
@@ -476,7 +491,7 @@ include::{{ task.results[task_for_host].filename }}.adoc[leveloffset=1]
 
 |====
 ....
-{%endraw%}
+
 
 == others
 
