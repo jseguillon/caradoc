@@ -483,13 +483,27 @@ a{% if loop.index != loop.length %},{% endif %}
 {% endfor %}
 |====
 
-== Timeline
+== Tasks
 
+No ok, no skipped
+
+link:./all_tasks[view all todo]
+
++++ <style> +++
+table tr td:first-child p a {
+  text-decoration: none!important;
+}
+a, a:hover { color: inherit; }
++++ </style> +++
+
+[cols="1,10,~"]
 |====
 {% for i in play['tasks'] %}
 {% set result_sorted=tasks[i]['results'] | dictsort %}
 {% for host, result in result_sorted %}
-| 🟢 | {{ host }} | {{ tasks[i]['task_name'] }} | {{ result['status'] }}
+{% if result.status != 'ok' and result.status != 'skipped' %}
+| link:./{{ './' + tasks[i].filename + '/' + tasks[i].filename + '-' + host + '.adoc' }}[{{ task_status_label(result.status) }}] | {{ host }} | link:{{ './' + tasks[i].filename + '/' + 'README.adoc' }}[{{ tasks[i].task_name }}]
+{% endif %}
 {% endfor %}
 {% endfor %}
 |====
