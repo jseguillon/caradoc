@@ -1,3 +1,26 @@
 [all]
 host1 ansible_connection=local sleep_time=10
 host2 ansible_connection=local sleep_time=1
+host3 ansible_connection=local sleep_time=10
+host4 ansible_connection=local sleep_time=1
+host5 ansible_connection=local sleep_time=10
+host6 ansible_connection=local sleep_time=1
+host7 ansible_connection=local sleep_time=1
+
+[three]
+host1 ansible_connection=local sleep_time=10
+host2 ansible_connection=local sleep_time=1
+host3 ansible_connection=local sleep_time=10
+
+[four]
+host1 ansible_connection=local sleep_time=10
+host2 ansible_connection=local sleep_time=1
+host3 ansible_connection=local sleep_time=10
+host4 ansible_connection=local sleep_time=1
+
+[five]
+host1 ansible_connection=local sleep_time=10
+host2 ansible_connection=local sleep_time=1
+host3 ansible_connection=local sleep_time=10
+host4 ansible_connection=local sleep_time=1
+host5 ansible_connection=local sleep_time=10

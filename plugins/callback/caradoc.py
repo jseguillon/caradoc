@@ -119,7 +119,6 @@ class CallbackModule(CallbackBase):
 
     def v2_playbook_on_play_start(self, play):
         self.log.debug("v2_playbook_on_play_start")
-
         # FIXME: kust like tasks please normalize
         play_name=re.sub(r"[^0-9a-zA-Z_\-.]", "_", play.name)
         if play.name in self.play_names_count:
@@ -136,7 +135,8 @@ class CallbackModule(CallbackBase):
             self._save_tasks_lists()
             self.tasks=dict()
             self.hosts_results = {"all": self._host_result_struct.copy() }
-        self.play = {"play_name": play_name, "play": play}
+
+        self.play = {"play_name": play_name, "tasks": [], "attributes": play.hosts}
         return
 
     def v2_playbook_on_handler_task_start(self, task):
@@ -147,9 +147,12 @@ class CallbackModule(CallbackBase):
     def v2_playbook_on_task_start(self, task, is_conditional, handler=False):
         # TODO: for task duration, see example on https://github.com/alikins/ansible/blob/devel/lib/ansible/plugins/callback/profile_tasks.py
         name=self._get_new_task_name(task)
+        self.play["tasks"].append(str(task._uuid))
         self.tasks[task._uuid] = {
-            "task_name": name,
-            "path": "base/" + self.play["play_name"] + "/" + name,
+            "task_name": task._attributes["name"],
+            "base_path": "base/" + self.play["play_name"] + "/" + name,
+            "raw_path": "base/" + self.play["play_name"] + "/" + name + "/raw",
+            "filename": name,
             "start_time": str(time.time()), "results": {}
         }
         return
@@ -258,15 +261,15 @@ class CallbackModule(CallbackBase):
                                     "implicit": result._host.implicit },
                           "status": status,
                           "play_name": self.play["play_name"],
-                        }, "env_rel_path": "../../..", "name": internal_result["filename"], "task_name": task_name
+                        }, "env_rel_path": "../../..", "name": current_task["filename"], "task_name": task_name
         }
 
         # FIXME: refacto with vars please
         task=self._template(self._playbook.get_loader(), CaradocTemplates.task_raw, json_result, no_env=True)
-        self._save_as_file(current_task["path"] + "/raw/", internal_result["filename"] + ".json", task)
+        self._save_as_file(current_task["raw_path"], current_task["filename"] + "-" + result._host.name + ".json", task)
 
         task=self._template(self._playbook.get_loader(), CaradocTemplates.task_details, json_result)
-        self._save_as_file(current_task["path"], internal_result["filename"] + ".adoc", task)
+        self._save_as_file(current_task["base_path"], current_task["filename"] + "-" + result._host.name + ".adoc", task)
 
         # FIXME: also render task README. Why ? to get README ready as soon as one host ended task
 
@@ -274,7 +277,7 @@ class CallbackModule(CallbackBase):
         # FIXME: raw link non ok when showinf task via symlink
         if not os.path.exists(self.log_folder+"/timeline/hosts/all"):
             makedirs_safe(self.log_folder+"/timeline/hosts/all")
-        os.symlink("../../../base/" + self.play["play_name"] + "/" + task_name + "/" + internal_result["filename"] + ".adoc", self.log_folder+"/timeline/hosts/all/"+ str(self.task_end_count) + " - " + task_name + ".adoc", )
+        os.symlink("../../../" + current_task["base_path"] + "/" + current_task["filename"] + "-" + result._host.name + ".adoc", self.log_folder+"/timeline/hosts/all/"+ str(self.task_end_count) + " - " + current_task["filename"] +  "-" + result._host.name  + ".adoc", )
 
     # FIXME: transfert any status
     def _save_task(self, result, status="ok"):
@@ -289,14 +292,12 @@ class CallbackModule(CallbackBase):
         # TODO: also count per groups ?
         self.hosts_results["all"][status] = self.hosts_results["all"][status] + 1
 
-        task_name = task["task_name"]
         task["results"][result._host.name] = {
-            "filename": task_name + "-" + result._host.name,
             "status": status
-            }
+        }
 
         self.task_end_count=self.task_end_count+1
-        self._render_task_result_templates(result, task_name, status)
+        self._render_task_result_templates(result, task["task_name"], status)
 
     def _save_as_file(self,path,name,content):
         path = os.path.join(self.log_folder, path)
@@ -311,7 +312,7 @@ class CallbackModule(CallbackBase):
         # TODO: compute a name per play with name and index just like tasks  "tasks": self.tasks,
         play_name=self.play["play_name"]
 
-        json_play={ "play_name": play_name, "env_rel_path": "../..", "tasks": self.tasks, "hosts_results": self.hosts_results}
+        json_play={ "play": self.play, "env_rel_path": "../..", "tasks": self.tasks, "hosts_results": self.hosts_results}
 
         play=self._template(self._playbook.get_loader(), CaradocTemplates.playbook, json_play)
         self._save_as_file("base/" + play_name + "/", "README.adoc", play)
@@ -322,7 +323,7 @@ class CallbackModule(CallbackBase):
             play=self._template(self._playbook.get_loader(), CaradocTemplates.tasks_list, json_task_lists)
 
             # TODO: same as _save_task TODO.
-            self._save_as_file("base/" + self.play["play_name"] + "/" + self.tasks[i]["task_name"]+"/", "README.adoc", play)
+            self._save_as_file(self.tasks[i]["base_path"] +"/", "README.adoc", play)
 
 class CaradocTemplates:
     # Applied to any adoc template, ensure fragments can be viewed with proper display
@@ -413,7 +414,7 @@ link:./raw/{{ name + ".json" | urlencode }}[view raw]
 = {{ task.task_name }}
 
 {% for task_for_host in task.results | default({}) %}
-include::{{ task.results[task_for_host].filename }}.adoc[leveloffset=1]
+include::{{ task.filename + "-" + task_for_host }}.adoc[leveloffset=1]
 {%endfor%}
 
 == others
@@ -426,7 +427,7 @@ include::{{ task.results[task_for_host].filename }}.adoc[leveloffset=1]
 '''
 
     playbook='''
-= PLAY: {{ play_name }}
+= PLAY: {{ play['play_name'] }}
 
 :toc:
 
@@ -484,22 +485,28 @@ a{% if loop.index != loop.length %},{% endif %}
 
 == Timeline
 
-[cols="1,30a,1,1,~a,1",autowidth,stripes=hover]
 |====
-| 🟢 | host1 | 22:03:47 | 00:00:02 | debug | <<task_uid1,🔍>>
-| 🟢 | host2 | 22:03:47 | 00:00:02 | debug | <<task_uid1,🔍>>
-
+{% for i in play['tasks'] %}
+{% set result_sorted=tasks[i]['results'] | dictsort %}
+{% for host, result in result_sorted %}
+| 🟢 | {{ host }} | {{ tasks[i]['task_name'] }} | {{ result['status'] }}
+{% endfor %}
+{% endfor %}
 |====
-....
 
+== other
 
-== others
-
-=====
 [,json]
 -------
-{{ tasks }}
+{{ tasks | to_nice_json }}
 -------
+
+
+[,json]
+-------
+{{ play | to_nice_json }}
+-------
+
 '''
 
     tasks_list_header='''

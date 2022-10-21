@@ -119,6 +119,30 @@
 - import_playbook: playbook_import.yaml
 
 # Test parrallel
+- hosts: three
+  name: parrallel
+  become: false
+  tags: multi
+  tasks:
+    - name: one
+      debug: msg=a
+
+- hosts: four
+  name: parrallel
+  become: false
+  tags: multi
+  tasks:
+    - name: one
+      debug: msg=a
+
+- hosts: five
+  name: parrallel
+  become: false
+  tags: multi
+  tasks:
+    - name: one
+      debug: msg=a
+
 - hosts: all
   name: parrallel
   become: false
