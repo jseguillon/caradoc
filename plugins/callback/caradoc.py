@@ -331,9 +331,9 @@ class CaradocTemplates:
     # this jinja section is include on each _template render
 # //TODO: diffs (https://github.com/ansible/ansible/blob/devel/lib/ansible/plugins/callback/__init__.py#L380)
     jinja_macros='''
-{%- macro task_status_label(task_changed, status) -%}
-{%- if not(task_changed) and status == "ok" -%}🟢
-{%- elif status == "ok" -%}🟠
+{%- macro task_status_label(status) -%}
+{%- if status == "ok" -%}🟢
+{%- elif status == "changed" -%}🟠
 {%- elif status == "failed" -%}🔴
 {%- elif status == "ignored_failed" -%}pass:[<s>🔴</s>]🔵
 {%- elif status == "skipped" -%}🔵
@@ -361,7 +361,7 @@ endif::[]
     # TODO: host: show vars "ansible_host", "inventory_file" and "inventory_dir" if exists
     # TODO: host: remove or externalize in meta: "_uuid" for git diff possible
     task_details='''
-= {{ task_status_label(result._result.changed |default(False),result.status ) }} {{ result._host.name }} - {{ result._task._attributes.name | default("no name") }} - {{ result._task._attributes.action }}
+= {{ task_status_label(result.status) }} {{ result._host.name }} - {{ result._task._attributes.name | default("no name") }} - {{ result._task._attributes.action }}
 :toc:
 
 link:./raw/{{ name + ".json" | urlencode }}[view raw]
