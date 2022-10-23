@@ -419,13 +419,6 @@ link:./raw/{{ name + ".json" | urlencode }}[view raw]
 include::{{ task.filename + "-" + task_for_host }}.adoc[leveloffset=1]
 {%endfor%}
 
-== others
-=====
-[,json]
--------
-{{ task }}
--------
-=====
 '''
 
     #TODO: use interactive graphif html
@@ -518,19 +511,6 @@ table  a, table  a:hover { color: inherit; }
 {% endfor %}
 {% endfor %}
 |====
-
-== other
-
-[,json]
--------
-{{ tasks | to_nice_json }}
--------
-
-
-[,json]
--------
-{{ play | to_nice_json }}
--------
 
 '''
 
