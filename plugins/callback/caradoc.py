@@ -312,10 +312,17 @@ class CallbackModule(CallbackBase):
         # TODO: compute a name per play with name and index just like tasks  "tasks": self.tasks,
         play_name=self.play["play_name"]
 
-        json_play={ "play": self.play, "env_rel_path": "../..", "tasks": self.tasks, "hosts_results": self.hosts_results}
+        json_play={ "play": self.play, "env_rel_path": "../..", "tasks": self.tasks, "hosts_results": self.hosts_results, "all_mode": False }
 
         play=self._template(self._playbook.get_loader(), CaradocTemplates.playbook, json_play)
         self._save_as_file("base/" + play_name + "/", "README.adoc", play)
+
+        play=self._template(self._playbook.get_loader(), CaradocTemplates.playbook_charts, json_play)
+        self._save_as_file("base/" + play_name + "/", "charts.adoc", play)
+
+        json_play["all_mode"] = True
+        play=self._template(self._playbook.get_loader(), CaradocTemplates.playbook, json_play)
+        self._save_as_file("base/" + play_name + "/", "all.adoc", play)
 
     def _save_tasks_lists(self):
         for i in self.tasks:
@@ -482,12 +489,23 @@ a{% if loop.index != loop.length %},{% endif %}
 |
 {% endfor %}
 |====
+'''
+
+    playbook='''
+= PLAY: {{ play['play_name'] }}
+
+:toc:
+
+{% if not all_mode | default(False) %}
+include::./charts.adoc[]
+{% endif %}
 
 == Tasks
 
+{% if not all_mode | default(False) %}
 No ok, no skipped
-
-link:./all_tasks[view all todo]
+link:./all.adoc[view all]
+{% endif %}
 
 +++ <style> +++
 table tr td:first-child p a {
@@ -501,7 +519,7 @@ table  a, table  a:hover { color: inherit; }
 {% for i in play['tasks'] %}
 {% set result_sorted=tasks[i]['results'] | dictsort %}
 {% for host, result in result_sorted %}
-{% if result.status != 'ok' and result.status != 'skipped' %}
+{% if all_mode or (result.status != 'ok' and result.status != 'skipped') %}
 | link:./{{ './' + tasks[i].filename + '/' + tasks[i].filename + '-' + host + '.adoc' }}[{{ task_status_label(result.status) }}] | {{ host }} | link:{{ './' + tasks[i].filename + '/' + 'README.adoc' }}[{{ tasks[i].task_name }}]
 {% endif %}
 {% endfor %}
