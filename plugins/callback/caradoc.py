@@ -507,7 +507,9 @@ table  a, table  a:hover { color: inherit; }
 {% set result_sorted=tasks[i]['results'] | dictsort %}
 {% for host, result in result_sorted %}
 {% if all_mode or (result.status != 'ok' and result.status != 'skipped') %}
-| link:./{{ './' + tasks[i].filename + '/' + tasks[i].filename + '-' + host + '.adoc' }}[{{ task_status_label(result.status) }}] | {{ host }} | link:{{ './' + tasks[i].filename + '/' + 'README.adoc' }}[{{ tasks[i].task_name }}]
+| link:./{{ './' + tasks[i].filename + '/' + tasks[i].filename + '-' + host + '.adoc' }}[{{ task_status_label(result.status) }}]
+| {{ host }}
+| link:{{ './' + tasks[i].filename + '/' + 'README.adoc' }}[{{ tasks[i].task_name }}]
 {% endif %}
 {% endfor %}
 {% endfor %}
