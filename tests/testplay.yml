@@ -7,10 +7,7 @@
   gather_facts: false
   tags: play_names
   tasks:
-    - name: Task debug with a name one
-      debug: msg=a
-
-    - name: Task debug with a name one
+    - name: Task debug
       debug: msg=a
 
 - name: Same playbook name
@@ -18,26 +15,13 @@
   gather_facts: false
   tags: play_names
   tasks:
-    - name: Task debug with a name two
-      debug: msg=a
-
-- hosts: host1
-  gather_facts: false
-  tags: play_names
-  tasks:
-    - name: Task debug with a name three
-      debug: msg=a
-
-- hosts: host1
-  gather_facts: false
-  tags: play_names
-  tasks:
-    - name: Task debug with a name four
+    - name: Task debug
       debug: msg=a
 
 - name: First playbook
-  hosts: host1
+  hosts: all
   tags: basic
+  any_errors_fatal: false
   tasks:
     # move to limits test case
     - name: Task debug with the special - char in it's a name -
@@ -65,10 +49,10 @@
         msg: something changed
       changed_when: True
 
-    - name: Test an error
+    - name: Test an ignored error
       debug:
         msg: an ignored error
-      failed_when: True
+      failed_when: ansible_hostname != 'host2'
       ignore_errors: True
 
     - name: Test a skip
@@ -89,9 +73,25 @@
         - 2
         - 3
 
+    - name: Loop control
+      debug:
+        msg: "{{ item.other }}"
+      loop_control:
+        label: "{{ item.name }}"
+      loop:
+        - name: 1
+          other: other
+        - name: 2
+          other: other2
+
     - name: Set a fact
       set_fact:
         myfact: fact
+
+    - name: Task fail one host
+      debug:
+        msg: "{{ inventory_hostname }}"
+      failed_when: inventory_hostname == 'host1'
 
     - name: Block get diffs
       block:
@@ -112,6 +112,7 @@
             create: yes
             path: "{{ tempfile_1.path }}"
           when: tempfile_1.path is defined
+
 
     - name: Do some include
       include_tasks: tasks.yaml
@@ -150,9 +151,6 @@
   tasks:
     - name: one
       debug: msg=a
-      loop:
-        - a
-        - b
 
 # # Delegated
 # - hosts: host1
