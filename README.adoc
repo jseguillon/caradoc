@@ -1,16 +1,16 @@
-= AsciiDoc README Template
+= Caradoc
+
 :doctype: article
 :description: Caradoc for Ansible creates Reports as asciidoc files
 :license-type: MIT
 :author: The Caradoc team
 :repository-url: https://github.com/jseguillon/caradoc
 :source-highlighter: rouge
-:rouge-style: github
-:!showtitle:
 :icons: font
-:toc: preamble
+:toc:
 
 ifdef::env-github[]
+:rouge-style: github
 :tip-caption: :bulb:
 :note-caption: :information_source:
 :important-caption: :heavy_exclamation_mark:
@@ -20,7 +20,18 @@ endif::[]
 
 
 == About the Project
-TODO
+
+Caradoc Also Records Ansible as Asciidoc files
+
+== Example screenshots
+
+Rendered in vscode
+
+[cols="10,~a"]
+|====
+| Playbook | image::docs/playbook.png[Playbook example,600]
+| Task | image::docs/task.png[Task example,600]
+|====
 
 === Usage
 
