@@ -493,7 +493,7 @@ link:./all_tasks[view all todo]
 table tr td:first-child p a {
   text-decoration: none!important;
 }
-a, a:hover { color: inherit; }
+table  a, table  a:hover { color: inherit; }
 +++ </style> +++
 
 [cols="1,10,~"]
