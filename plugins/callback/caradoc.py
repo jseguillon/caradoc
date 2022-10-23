@@ -305,6 +305,9 @@ class CallbackModule(CallbackBase):
             fd.write(to_bytes(content))
 
     def _save_play(self):
+        # FIXME: need to detect some conditions:
+        # If no task done (= all tags skipped) => do not dump anything
+        # If all tasks OK: do not print "no skipped" task table (nor dump charts) ?
         play_name=self.play["play_name"]
 
         json_play={ "play": self.play, "env_rel_path": "../..", "tasks": self.tasks, "hosts_results": self.hosts_results, "all_mode": False }
