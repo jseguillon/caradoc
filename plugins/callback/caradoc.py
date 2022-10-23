@@ -324,7 +324,7 @@ class CallbackModule(CallbackBase):
 
     def _save_tasks_lists(self):
         for i in self.tasks:
-            json_task_lists={"env_rel_path": "../../..", "task": self.tasks[i]}
+            json_task_lists={"env_rel_path": "../../..", "task": self.tasks[i], "play_name": self.play["play_name"]}
             play=self._template(self._playbook.get_loader(), CaradocTemplates.tasks_list, json_task_lists)
 
             # TODO: same as _save_task TODO.
@@ -417,6 +417,11 @@ link:./raw/{{ name + ".json" | urlencode }}[view raw]
     tasks_list='''
 = {{ task.task_name }}
 
+== Playbook
+
+link:../README.adoc[{{play_name}}](link:../all.adoc[all tasks])
+
+== Tasks
 {% for task_for_host in task.results | default({}) %}
 include::{{ task.filename + "-" + task_for_host }}.adoc[leveloffset=1]
 {%endfor%}
