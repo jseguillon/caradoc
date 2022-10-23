@@ -305,7 +305,6 @@ class CallbackModule(CallbackBase):
             fd.write(to_bytes(content))
 
     def _save_play(self):
-        # TODO: compute a name per play with name and index just like tasks  "tasks": self.tasks,
         play_name=self.play["play_name"]
 
         json_play={ "play": self.play, "env_rel_path": "../..", "tasks": self.tasks, "hosts_results": self.hosts_results, "all_mode": False }
@@ -418,7 +417,6 @@ link:./raw/{{ name + ".json" | urlencode }}[view raw]
 {% for task_for_host in task.results | default({}) %}
 include::{{ task.filename + "-" + task_for_host }}.adoc[leveloffset=1]
 {%endfor%}
-
 '''
 
     #TODO: use interactive graphif html
