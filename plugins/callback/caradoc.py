@@ -365,13 +365,21 @@ endif::[]
     # TODO: result => extract usefull values (msg if changed, skip_reason if skipped, error if error(?), others to be collected) and make the rest collapse
     # TODO: host: show vars "ansible_host", "inventory_file" and "inventory_dir" if exists
     # TODO: host: remove or externalize in meta: "_uuid" for git diff possible
+
     task_details='''
 = {{ task_status_label(result.status) }} {{ result._host.name }} - {{ result._task._attributes.name | default("no name") }} - {{ result._task._attributes.action }}
+
 :toc:
 
-link:./raw/{{ name + ".json" | urlencode }}[view raw]
+== Links
+
+  * task: link:./README.adoc[task {{ result._task._attributes.name }}]
+  * playbook: link:../README.adoc[playbook {{ result.play_name }}]
+
 
 == Result
+
+link:./raw/{{ name + "-" + result._host.name + ".json" | urlencode }}[view raw]
 
 =====
 [,json]
@@ -417,21 +425,20 @@ link:./raw/{{ name + ".json" | urlencode }}[view raw]
     tasks_list='''
 = {{ task.task_name }}
 
-== Playbook
+== Links
 
-link:../README.adoc[{{play_name}}](link:../all.adoc[all tasks])
+* playbook link:../README.adoc[{{play_name}}](link:../all.adoc[all tasks])
 
 == Tasks
 {% for task_for_host in task.results | default({}) %}
-include::{{ task.filename + "-" + task_for_host }}.adoc[leveloffset=1]
+include::{{ task.filename + "-" + task_for_host }}.adoc[leveloffset=2,lines=1..12;18..-1]
 {%endfor%}
 '''
 
-    #TODO: use interactive graphif html
+    #TODO: use interactive graphif html or if some CARADOC_INTERACTIVE env var is true
     #TODO: find a way to show total
     playbook_charts='''
 == Charts
-
 
 {% set rows = hosts_results | list | length  %}
 {% set rows = 3 if rows >=3 else rows%}
@@ -492,11 +499,21 @@ a{% if loop.index != loop.length %},{% endif %}
 include::./charts.adoc[]
 {% endif %}
 
-== Tasks
 
 {% if not all_mode | default(False) %}
-No ok, no skipped
-link:./all.adoc[view all]
+== Links
+
+  * link:./all.adoc[all tasks]
+
+== Tasks non ok nor skipped
+
+{% else %}
+== Links
+
+  * link:./README.adoc[only non or nor skipped]
+
+== All tasks
+
 {% endif %}
 
 +++ <style> +++
@@ -512,7 +529,7 @@ table  a, table  a:hover { color: inherit; }
 {% set result_sorted=tasks[i]['results'] | dictsort %}
 {% for host, result in result_sorted %}
 {% if all_mode or (result.status != 'ok' and result.status != 'skipped') %}
-| link:./{{ './' + tasks[i].filename + '/' + tasks[i].filename + '-' + host + '.adoc' }}[{{ task_status_label(result.status) }}]
+| link:{{ './' + tasks[i].filename + '/' + tasks[i].filename + '-' + host + '.adoc' }}[{{ task_status_label(result.status) }}]
 | {{ host }}
 | link:{{ './' + tasks[i].filename + '/' + 'README.adoc' }}[{{ tasks[i].task_name }}]
 {% endif %}
