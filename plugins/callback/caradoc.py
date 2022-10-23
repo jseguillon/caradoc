@@ -129,11 +129,10 @@ class CallbackModule(CallbackBase):
 
         if  self.play is not None:
             self._save_play()
-            # TODO: ok to loose track of tasks but may refer some plays for global stats ?
-            # FIXME: cannot loose track of file else with no more can unique index
-            # =so currently tasks are not cleaned
+            # FIXME: save tasks_list shoud be multiple saved each time a runner ends and not waiting playook to achieve
             self._save_tasks_lists()
             self.tasks=dict()
+            # TODO: ok to loose track of tasks but may should refer plays for global stats
             self.hosts_results = {"all": self._host_result_struct.copy() }
 
         self.play = {"play_name": play_name, "tasks": [], "attributes": play.hosts}
@@ -221,9 +220,9 @@ class CallbackModule(CallbackBase):
 
     def v2_playbook_on_stats(self, stats):
         self.log.debug("v2_playbook_on_stats")
+        # FIXME: save tasks_list shoud be multiple saved each time a runner ends and not waiting playook to achieve
         self._save_tasks_lists()
         self._save_play()
-
     # TODO: may need some implementation of v2_runner_on_async_XXX also (ara does not implement anything)
 
     # Render a caradoc template, including jinja common macros plus static include of env if asked
@@ -264,14 +263,11 @@ class CallbackModule(CallbackBase):
                         }, "env_rel_path": "../../..", "name": current_task["filename"], "task_name": task_name
         }
 
-        # FIXME: refacto with vars please
         task=self._template(self._playbook.get_loader(), CaradocTemplates.task_raw, json_result, no_env=True)
         self._save_as_file(current_task["raw_path"], current_task["filename"] + "-" + result._host.name + ".json", task)
 
         task=self._template(self._playbook.get_loader(), CaradocTemplates.task_details, json_result)
         self._save_as_file(current_task["base_path"], current_task["filename"] + "-" + result._host.name + ".adoc", task)
-
-        # FIXME: also render task README. Why ? to get README ready as soon as one host ended task
 
         # TODO: create per host timeline
         # FIXME: raw link non ok when showinf task via symlink
@@ -415,7 +411,6 @@ link:./raw/{{ name + ".json" | urlencode }}[view raw]
 =====
 '''
 
-    # FIXME : keep original name of task (without file format replace ) for better search and render
     # FIXME: need to be ordered by host name for stable and minimize diff
     tasks_list='''
 = {{ task.task_name }}
@@ -433,11 +428,9 @@ include::{{ task.filename + "-" + task_for_host }}.adoc[leveloffset=1]
 =====
 '''
 
-    playbook='''
-= PLAY: {{ play['play_name'] }}
-
-:toc:
-
+    #TODO: use interactive graphif html
+    #TODO: find a way to show total
+    playbook_charts='''
 == Charts
 
 
@@ -452,7 +445,7 @@ a{% if loop.index != loop.length %},{% endif %}
 |====
 {% for host in hosts_results %}
 |
-[vegalite,format="svg",opts=interactive]
+[vegalite,format="svg"]
 ....
 {
   "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
