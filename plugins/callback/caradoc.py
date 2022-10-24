@@ -119,7 +119,6 @@ class CallbackModule(CallbackBase):
 
     def v2_playbook_on_play_start(self, play):
         self.log.debug("v2_playbook_on_play_start")
-        # FIXME: kust like tasks please normalize
         play_name=re.sub(r"[^0-9a-zA-Z_\-.]", "_", play.name)
         if play.name in self.play_names_count:
             self.play_names_count[play.name] = self.play_names_count[play.name] + 1
@@ -129,8 +128,6 @@ class CallbackModule(CallbackBase):
 
         if  self.play is not None:
             self._save_play()
-            # FIXME: save tasks_list shoud be multiple saved each time a runner ends and not waiting playook to achieve
-            self._save_tasks_lists()
             self.tasks=dict()
             # TODO: ok to loose track of tasks but may should refer plays for global stats
             self.hosts_results = {"all": self._host_result_struct.copy() }
@@ -150,7 +147,7 @@ class CallbackModule(CallbackBase):
         self.tasks[task._uuid] = {
             "task_name": task._attributes["name"],
             "base_path": "base/" + self.play["play_name"] + "/" + name,
-            "raw_path": "base/" + self.play["play_name"] + "/" + name + "/raw",
+            "raw_path": "raw/" + self.play["play_name"] + "/" + name,
             "filename": name,
             "start_time": str(time.time()), "results": {}
         }
@@ -221,24 +218,9 @@ class CallbackModule(CallbackBase):
     def v2_playbook_on_stats(self, stats):
         self.log.debug("v2_playbook_on_stats")
         # FIXME: save tasks_list shoud be multiple saved each time a runner ends and not waiting playook to achieve
-        self._save_tasks_lists()
+        # self._save_tasks_lists()
         self._save_play()
     # TODO: may need some implementation of v2_runner_on_async_XXX also (ara does not implement anything)
-
-    # Render a caradoc template, including jinja common macros plus static include of env if asked
-    def _template(self, loader, template, variables, no_env=False):
-        _templar = Templar(loader=loader, variables=variables)
-
-        if not no_env:
-            template = CaradocTemplates.jinja_macros + "\n" + CaradocTemplates.common_adoc + "\n" + template
-        else:
-            template = CaradocTemplates.jinja_macros + "\n"  + template
-        return _templar.template(
-            template,
-            preserve_trailing_newlines=True,
-            convert_data=False,
-            escape_backslashes=True
-        )
 
     # For a task name, will render raw and base templates
     # Also create symlinks in timelines directory
@@ -275,7 +257,7 @@ class CallbackModule(CallbackBase):
             makedirs_safe(self.log_folder+"/timeline/hosts/all")
         os.symlink("../../../" + current_task["base_path"] + "/" + current_task["filename"] + "-" + result._host.name + ".adoc", self.log_folder+"/timeline/hosts/all/"+ str(self.task_end_count) + " - " + current_task["filename"] +  "-" + result._host.name  + ".adoc", )
 
-    # FIXME: transfert any status
+    # FIXME: deal with handlers
     def _save_task(self, result, status="ok"):
         # Get back name assigned to task uuid for consistent file naming
         # FIXME: save result status + time end etc...
@@ -295,6 +277,32 @@ class CallbackModule(CallbackBase):
         self.task_end_count=self.task_end_count+1
         self._render_task_result_templates(result, task["task_name"], status)
 
+        self._save_task_readme(task)
+
+    def _save_task_readme(self, task):
+        json_task_lists={"env_rel_path": "../../..", "task": task, "play_name": self.play["play_name"]}
+        play=self._template(self._playbook.get_loader(), CaradocTemplates.tasks_list, json_task_lists)
+
+        # TODO: same as _save_task TODO.
+        self._save_as_file(task["base_path"] +"/", "README.adoc", play)
+
+    def _save_play(self):
+        play_name=self.play["play_name"]
+
+        # Dont dump play if no task did run
+        if self.hosts_results["all"] != self._host_result_struct:
+            json_play={ "play": self.play, "env_rel_path": "../..", "tasks": self.tasks, "hosts_results": self.hosts_results, "all_mode": False }
+
+            play=self._template(self._playbook.get_loader(), CaradocTemplates.playbook, json_play)
+            self._save_as_file("base/" + play_name + "/", "README.adoc", play)
+
+            play=self._template(self._playbook.get_loader(), CaradocTemplates.playbook_charts, json_play)
+            self._save_as_file("base/" + play_name + "/", "charts.adoc", play)
+
+            json_play["all_mode"] = True
+            play=self._template(self._playbook.get_loader(), CaradocTemplates.playbook, json_play)
+            self._save_as_file("base/" + play_name + "/", "all.adoc", play)
+
     def _save_as_file(self,path,name,content):
         path = os.path.join(self.log_folder, path)
         if not os.path.exists(path):
@@ -304,31 +312,20 @@ class CallbackModule(CallbackBase):
         with open(path, "wb") as fd:
             fd.write(to_bytes(content))
 
-    def _save_play(self):
-        # FIXME: need to detect some conditions:
-        # If no task done (= all tags skipped) => do not dump anything
-        # If all tasks OK: do not print "no skipped" task table (nor dump charts) ?
-        play_name=self.play["play_name"]
+    # Render a caradoc template, including jinja common macros plus static include of env if asked
+    def _template(self, loader, template, variables, no_env=False):
+        _templar = Templar(loader=loader, variables=variables)
 
-        json_play={ "play": self.play, "env_rel_path": "../..", "tasks": self.tasks, "hosts_results": self.hosts_results, "all_mode": False }
-
-        play=self._template(self._playbook.get_loader(), CaradocTemplates.playbook, json_play)
-        self._save_as_file("base/" + play_name + "/", "README.adoc", play)
-
-        play=self._template(self._playbook.get_loader(), CaradocTemplates.playbook_charts, json_play)
-        self._save_as_file("base/" + play_name + "/", "charts.adoc", play)
-
-        json_play["all_mode"] = True
-        play=self._template(self._playbook.get_loader(), CaradocTemplates.playbook, json_play)
-        self._save_as_file("base/" + play_name + "/", "all.adoc", play)
-
-    def _save_tasks_lists(self):
-        for i in self.tasks:
-            json_task_lists={"env_rel_path": "../../..", "task": self.tasks[i], "play_name": self.play["play_name"]}
-            play=self._template(self._playbook.get_loader(), CaradocTemplates.tasks_list, json_task_lists)
-
-            # TODO: same as _save_task TODO.
-            self._save_as_file(self.tasks[i]["base_path"] +"/", "README.adoc", play)
+        if not no_env:
+            template = CaradocTemplates.jinja_macros + "\n" + CaradocTemplates.common_adoc + "\n" + template
+        else:
+            template = CaradocTemplates.jinja_macros + "\n"  + template
+        return _templar.template(
+            template,
+            preserve_trailing_newlines=True,
+            convert_data=False,
+            escape_backslashes=True
+        )
 
 class CaradocTemplates:
     # Applied to any adoc template, ensure fragments can be viewed with proper display
@@ -365,7 +362,7 @@ endif::[]
     # TODO: result => extract usefull values (msg if changed, skip_reason if skipped, error if error(?), others to be collected) and make the rest collapse
     # TODO: host: show vars "ansible_host", "inventory_file" and "inventory_dir" if exists
     # TODO: host: remove or externalize in meta: "_uuid" for git diff possible
-
+    # FIXME: sort tags
     task_details='''
 = {{ task_status_label(result.status) }} {{ result._host.name }} - {{ result._task._attributes.name | default("no name") }} - {{ result._task._attributes.action }}
 
@@ -373,13 +370,13 @@ endif::[]
 
 == Links
 
-  * task: link:./README.adoc[task {{ result._task._attributes.name }}]
-  * playbook: link:../README.adoc[playbook {{ result.play_name }}]
+  * task: link:./README.adoc[{{ result._task._attributes.name }}]
+  * playbook: link:../README.adoc[{{ result.play_name }}]
 
 
 == Result
 
-link:./raw/{{ name + "-" + result._host.name + ".json" | urlencode }}[view raw]
+link:+++../../../raw/{{ result.play_name }}/{{ name}}/{{ name + "-" + result._host.name }}.json+++[view raw]
 
 =====
 [,json]
@@ -406,6 +403,7 @@ link:./raw/{{ name + "-" + result._host.name + ".json" | urlencode }}[view raw]
 =====
 
 == Host
+[cols="10,~",autowidth,stripes=hover]
 |====
 | name | {{ result._host["name"] }}
 | address | {{ result._host["address"] }}
@@ -423,16 +421,17 @@ link:./raw/{{ name + "-" + result._host.name + ".json" | urlencode }}[view raw]
 
     # FIXME: need to be ordered by host name for stable and minimize diff
     tasks_list='''
-= {{ task.task_name }}
+= TASK: {{ task.task_name }}
 
 == Links
 
 * playbook link:../README.adoc[{{play_name}}](link:../all.adoc[all tasks])
 
-== Tasks
+== Results
 {% for task_for_host in task.results | default({}) %}
 include::{{ task.filename + "-" + task_for_host }}.adoc[leveloffset=2,lines=1..12;18..-1]
 {%endfor%}
+
 '''
 
     #TODO: use interactive graphif html or if some CARADOC_INTERACTIVE env var is true
@@ -523,15 +522,15 @@ table tr td:first-child p a {
 table  a, table  a:hover { color: inherit; }
 +++ </style> +++
 
-[cols="1,10,~"]
+[cols="1,30,~"]
 |====
 {% for i in play['tasks'] %}
 {% set result_sorted=tasks[i]['results'] | dictsort %}
 {% for host, result in result_sorted %}
 {% if all_mode or (result.status != 'ok' and result.status != 'skipped') %}
-| link:{{ './' + tasks[i].filename + '/' + tasks[i].filename + '-' + host + '.adoc' }}[{{ task_status_label(result.status) }}]
+| link:+++{{ './' + tasks[i].filename + '/' + tasks[i].filename + '-' + host + '.adoc' }}+++[{{ task_status_label(result.status) }}]
 | {{ host }}
-| link:{{ './' + tasks[i].filename + '/' + 'README.adoc' }}[{{ tasks[i].task_name }}]
+| link:+++{{ './' + tasks[i].filename + '/' + 'README.adoc' }}+++[{{ tasks[i].task_name }}]
 {% endif %}
 {% endfor %}
 {% endfor %}
