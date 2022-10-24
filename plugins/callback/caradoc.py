@@ -557,7 +557,7 @@ table  a, table  a:hover { color: inherit; }
     env='''
 :toclevels: 2
 // TODO: set env var option for kroki localhost or any url
-:kroki-server-url: https://kroki.io
+:kroki-server-url: http://localhost:8000
 ifdef::env-vscode[]
 :relfilesuffix: .adoc
 :source-highlighter: highlight.js
