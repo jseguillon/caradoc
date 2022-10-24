@@ -251,12 +251,6 @@ class CallbackModule(CallbackBase):
         task=self._template(self._playbook.get_loader(), CaradocTemplates.task_details, json_result)
         self._save_as_file(current_task["base_path"], current_task["filename"] + "-" + result._host.name + ".adoc", task)
 
-        # TODO: create per host timeline
-        # FIXME: raw link non ok when showinf task via symlink
-        if not os.path.exists(self.log_folder+"/timeline/hosts/all"):
-            makedirs_safe(self.log_folder+"/timeline/hosts/all")
-        os.symlink("../../../" + current_task["base_path"] + "/" + current_task["filename"] + "-" + result._host.name + ".adoc", self.log_folder+"/timeline/hosts/all/"+ str(self.task_end_count) + " - " + current_task["filename"] +  "-" + result._host.name  + ".adoc", )
-
     # FIXME: deal with handlers
     def _save_task(self, result, status="ok"):
         # Get back name assigned to task uuid for consistent file naming
@@ -278,6 +272,7 @@ class CallbackModule(CallbackBase):
         self._render_task_result_templates(result, task["task_name"], status)
 
         self._save_task_readme(task)
+        self._save_play()
 
     def _save_task_readme(self, task):
         json_task_lists={"env_rel_path": "../../..", "task": task, "play_name": self.play["play_name"]}
