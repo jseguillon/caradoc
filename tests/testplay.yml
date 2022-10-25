@@ -108,11 +108,33 @@
 
         - name: Add a line to a file
           ansible.builtin.lineinfile:
-            line: "a test to get a diff"
+            line: |-
+              first block first line
+              first block second line
+              first block third line
             create: yes
             path: "{{ tempfile_1.path }}"
           when: tempfile_1.path is defined
 
+        - name: Add a line to a file
+          ansible.builtin.lineinfile:
+            line: |-
+              second block first line
+              second block second line
+              second block third line
+            insertbefore: first block second line
+            path: "{{ tempfile_1.path }}"
+          when: tempfile_1.path is defined
+
+        - name: Add a line to a file
+          ansible.builtin.lineinfile:
+            line: |-
+              third block first line
+              third block second line
+              third block third line
+            insertbefore: second block second line
+            path: "{{ tempfile_1.path }}"
+          when: tempfile_1.path is defined
 
     - name: Do some include
       include_tasks: tasks.yaml
