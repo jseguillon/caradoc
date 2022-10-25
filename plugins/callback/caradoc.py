@@ -26,6 +26,8 @@ from ansible.utils.unsafe_proxy import wrap_var
 import re
 from json import JSONEncoder
 import time
+import difflib
+from ansible.module_utils.common._collections_compat import MutableMapping
 
 DOCUMENTATION = """
 callback: caradoc
@@ -210,6 +212,27 @@ class CallbackModule(CallbackBase):
         # from Ara: result._task.delegate_to can end up being a variable from this hook, don't save it.
         # https://github.com/ansible/ansible/issues/75339
 
+    def v2_on_file_diff(self, result):
+        current_task = self.tasks[result._task._uuid]
+        ansi_escape3 = re.compile(r'(\x9B|\x1B\[)[0-?]*[ -/]*[@-~]', flags=re.IGNORECASE)
+
+        if result._host.name not in current_task["results"]:
+            current_task["results"][result._host.name]={}
+
+        if result._task.loop and 'results' in result._result:
+            for res in result._result['results']:
+                if 'diff' in res and res['diff'] and res.get('changed', False):
+                    diff = self._get_diff(res['diff'])
+                    if diff:
+                        diff = ansi_escape3.sub('', diff)
+                        current_task["results"][result._host.name]["diff"]=diff
+        elif 'diff' in result._result and result._result['diff'] and result._result.get('changed', False):
+            diff = self._get_diff(result._result['diff'])
+            if diff:
+                diff = ansi_escape3.sub('', diff)
+                current_task["results"][result._host.name]["diff"]=diff
+
+
     # TODO: track this event ?
     def v2_playbook_on_include(self, included_file):
         self.log.debug("v2_playbook_on_include")
@@ -242,14 +265,15 @@ class CallbackModule(CallbackBase):
                                     "implicit": result._host.implicit },
                           "status": status,
                           "play_name": self.play["play_name"],
+                          "internal_result": internal_result,
                         }, "env_rel_path": "../../..", "name": current_task["filename"], "task_name": task_name
         }
 
         task=self._template(self._playbook.get_loader(), CaradocTemplates.task_raw, json_result, no_env=True)
-        self._save_as_file(current_task["raw_path"], current_task["filename"] + "-" + result._host.name + ".json", task)
+        self._save_as_file(current_task["raw_path"], result._host.name + ".json", task)
 
         task=self._template(self._playbook.get_loader(), CaradocTemplates.task_details, json_result)
-        self._save_as_file(current_task["base_path"], current_task["filename"] + "-" + result._host.name + ".adoc", task)
+        self._save_as_file(current_task["base_path"], result._host.name + ".adoc", task)
 
     # FIXME: deal with handlers
     def _save_task(self, result, status="ok"):
@@ -264,9 +288,9 @@ class CallbackModule(CallbackBase):
         # TODO: also count per groups ?
         self.hosts_results["all"][status] = self.hosts_results["all"][status] + 1
 
-        task["results"][result._host.name] = {
-            "status": status
-        }
+        if result._host.name not in task["results"]:
+            task["results"][result._host.name]={}
+        task["results"][result._host.name]["status"] = status
 
         self.task_end_count=self.task_end_count+1
         self._render_task_result_templates(result, task["task_name"], status)
@@ -335,6 +359,7 @@ class CaradocTemplates:
 {%- elif status == "ignored_failed" -%}pass:[<s>🔴</s>]🔵
 {%- elif status == "skipped" -%}🔵
 {%- elif status == "unreachable" -%}💀
+{%- elif status == "running" -%}🪛
 {%- endif -%}
 {%- endmacro %}
 '''
@@ -369,9 +394,19 @@ endif::[]
   * playbook: link:../README.adoc[{{ result.play_name }}]
 
 
+{% if result.internal_result.diff | default('') %}
+== Diff
+=====
+[,diff]
+-------
+{{ result.internal_result.diff | default('') }}
+-------
+=====
+{% endif %}
+
 == Result
 
-link:+++../../../raw/{{ result.play_name }}/{{ name}}/{{ name + "-" + result._host.name }}.json+++[view raw]
+link:../../../raw/{{ result.play_name }}/{{ name }}/{{ result._host.name }}.json[view raw]
 
 =====
 [,json]
@@ -420,11 +455,11 @@ link:+++../../../raw/{{ result.play_name }}/{{ name}}/{{ name + "-" + result._ho
 
 == Links
 
-* playbook link:../README.adoc[{{play_name}}](link:../all.adoc[all tasks])
+* playbook link:../README.adoc[{{ play_name }}](link:../all.adoc[all tasks])
 
 == Results
 {% for task_for_host in task.results | default({}) %}
-include::{{ task.filename + "-" + task_for_host }}.adoc[leveloffset=2,lines=1..12;18..-1]
+include::{{ task_for_host }}.adoc[leveloffset=2,lines=1..12;18..-1]
 {%endfor%}
 
 '''
@@ -522,10 +557,10 @@ table  a, table  a:hover { color: inherit; }
 {% for i in play['tasks'] %}
 {% set result_sorted=tasks[i]['results'] | dictsort %}
 {% for host, result in result_sorted %}
-{% if all_mode or (result.status != 'ok' and result.status != 'skipped') %}
-| link:+++{{ './' + tasks[i].filename + '/' + tasks[i].filename + '-' + host + '.adoc' }}+++[{{ task_status_label(result.status) }}]
+{% if all_mode or ( (result.status | default('running') != 'ok') and (result.status | default('running') != 'skipped') ) %}
+| link:++{{ './' + tasks[i].filename + '/' + host + '.adoc' }}++[++{{ task_status_label(result.status | default('running')) }}++]
 | {{ host }}
-| link:+++{{ './' + tasks[i].filename + '/' + 'README.adoc' }}+++[{{ tasks[i].task_name }}]
+| link:++{{ './' + tasks[i].filename + '/' + 'README.adoc' }}++[++{{ tasks[i].task_name | replace("|","\|") }}++]
 {% endif %}
 {% endfor %}
 {% endfor %}
