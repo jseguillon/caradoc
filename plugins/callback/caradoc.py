@@ -9,6 +9,7 @@ import getpass
 import json
 import logging
 import os
+import sys
 import socket
 from concurrent.futures import ThreadPoolExecutor
 
@@ -149,7 +150,6 @@ class CallbackModule(CallbackBase):
         self.tasks[task._uuid] = {
             "task_name": task._attributes["name"],
             "base_path": "base/" + self.play["play_name"] + "/" + name,
-            "raw_path": "raw/" + self.play["play_name"] + "/" + name,
             "filename": name,
             "start_time": str(time.time()), "results": {}
         }
@@ -245,8 +245,7 @@ class CallbackModule(CallbackBase):
         self._save_play()
     # TODO: may need some implementation of v2_runner_on_async_XXX also (ara does not implement anything)
 
-    # For a task name, will render raw and base templates
-    # Also create symlinks in timelines directory
+    # For a task name, will render base template
     def _render_task_result_templates(self,result, task_name, status):
         # TODO: a serializer may be better than this json tricky construction
         # Also in final design may not need all of this an rely or links:[] (for host as an example)
@@ -268,9 +267,6 @@ class CallbackModule(CallbackBase):
                           "internal_result": internal_result,
                         }, "env_rel_path": "../../..", "name": current_task["filename"], "task_name": task_name
         }
-
-        task=self._template(self._playbook.get_loader(), CaradocTemplates.task_raw, json_result, no_env=True)
-        self._save_as_file(current_task["raw_path"], result._host.name + ".json", task)
 
         task=self._template(self._playbook.get_loader(), CaradocTemplates.task_details, json_result)
         self._save_as_file(current_task["base_path"], result._host.name + ".adoc", task)
@@ -371,11 +367,6 @@ include::{{ env_rel_path | default('.') }}/env.adoc[]
 endif::[]
 '''
 
-    # Raw but prettu printed
-    task_raw='''
-{{ result | default({}) |to_nice_json }}
-'''
-
     # Solo task adoc
     # TODO: consider a jinja macro because code seems a bit duplicate
     # TODO: would be cool if by default is open even from include but only if few lines (can we compute number of lines ?)
@@ -405,8 +396,6 @@ endif::[]
 {% endif %}
 
 == Result
-
-link:../../../raw/{{ result.play_name }}/{{ name }}/{{ result._host.name }}.json[view raw]
 
 =====
 [,json]
