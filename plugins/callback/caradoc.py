@@ -366,7 +366,7 @@ class CaradocTemplates:
 ....
 {
   "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
-  "title": { "text": "{{ host }}", "color": "{caradoc_label_color}", "fontSize": 18 },
+  "title": { "text": "{{ host }}", "color": "{caradoc_label_color}", "fontSize": 16 },
   "background": null,
   "data": {
     "values": {{ hosts_results[host]  | dict2items(key_name='status') | to_json  }}
@@ -380,7 +380,7 @@ class CaradocTemplates:
     "color": {
       "field": "status",
       "type": "nominal",
-      "legend": {"labelColor": "{caradoc_label_color}", "titleColor": "{caradoc_label_color}", "titleFontSize": 16, "labelFontSize": 14},
+      "legend": {"labelColor": "{caradoc_label_color}", "titleColor": "{caradoc_label_color}", "titleFontSize": 14, "labelFontSize": 12},
       "scale": {
         "domain": ["changed", "ok", "skipped", "failed", "ignored_failed"],
         "range": ["rgb( 241, 196, 15 )", "rgb( 39, 174, 96 )", "rgb( 41, 128, 185 )", "rgb(231,76, 60)", "rgb(107, 91, 149)"]
@@ -502,7 +502,7 @@ include::{{ task_for_host }}.adoc[leveloffset=2,lines=1..12;18..-1]
 [%collapsible]
 ====
 {% set rows = hosts_results | list | length -1 %}
-{% set rows = 3 if rows >=3 else rows %}
+{% set rows = 5 if rows >=5 else rows %}
 [cols="
 {%- for i in range(rows) %}
 a{% if loop.index != loop.length %},{% endif %}
@@ -592,8 +592,10 @@ endif::[]
 ifeval::["{caradoc-theme}" != "dark"]
 :caradoc_label_color: black
 +++ <style> +++
-code { background: Lavender   !important; }
++++ code { background: Lavender   !important; } +++
 +++ </style> +++
 endif::[]
-
++++ <style> +++
++++ #header, #content, #footer, #footnotes { max-width: none;} +++
++++ </style> +++
 '''
