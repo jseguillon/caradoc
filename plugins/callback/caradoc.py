@@ -136,7 +136,7 @@ class CallbackModule(CallbackBase):
             # TODO: ok to loose track of tasks but may should refer plays for global stats
 
         self.play_results["plays"][play._uuid] = {"all": self._host_result_struct.copy() }
-        self.play = {"play_name": play_name, "_uuid": play._uuid, "tasks": [], "attributes": play.hosts}
+        self.play = {"name": play.name, "play_name": play_name, "_uuid": play._uuid, "tasks": [], "attributes": play.hosts}
         return
 
     def v2_playbook_on_handler_task_start(self, task):
@@ -523,7 +523,7 @@ a{% if loop.index != loop.length %},{% endif %}
 '''
 
     playbook='''
-= PLAY: {{ play['play_name'] }}
+= PLAY: {{ play['name'] | default(play['name']) }}
 
 {% if not all_mode | default(False) %}
 include::./charts.adoc[]
