@@ -118,6 +118,7 @@ class CallbackModule(CallbackBase):
         self.log.debug("v2_playbook_on_start")
 
         self._playbook=playbook
+        self.play_results = {"plays": { "all": self._host_result_struct.copy() }, "hosts": { "all": self._host_result_struct.copy() } }
         return
 
     def v2_playbook_on_play_start(self, play):
@@ -133,9 +134,9 @@ class CallbackModule(CallbackBase):
             self._save_play()
             self.tasks=dict()
             # TODO: ok to loose track of tasks but may should refer plays for global stats
-            self.hosts_results = {"all": self._host_result_struct.copy() }
 
-        self.play = {"play_name": play_name, "tasks": [], "attributes": play.hosts}
+        self.play_results["plays"][play._uuid] = {"all": self._host_result_struct.copy() }
+        self.play = {"play_name": play_name, "_uuid": play._uuid, "tasks": [], "attributes": play.hosts}
         return
 
     def v2_playbook_on_handler_task_start(self, task):
@@ -277,12 +278,13 @@ class CallbackModule(CallbackBase):
         # FIXME: save result status + time end etc...
         task=self.tasks[result._task._uuid]
 
-        if result._host.name not in self.hosts_results:
-            self.hosts_results[result._host.name] = self._host_result_struct.copy()
-        self.hosts_results[result._host.name][status] = self.hosts_results[result._host.name][status] + 1
+        if result._host.name not in self.play_results["plays"][self.play["_uuid"]]:
+            self.play_results["plays"][self.play["_uuid"]][result._host.name] = self._host_result_struct.copy()
+        self.play_results["plays"][self.play["_uuid"]][result._host.name][status] = self.play_results["plays"][self.play["_uuid"]][result._host.name][status] + 1
 
         # TODO: also count per groups ?
-        self.hosts_results["all"][status] = self.hosts_results["all"][status] + 1
+        self.play_results["plays"][self.play["_uuid"]]["all"][status] = self.play_results["plays"][self.play["_uuid"]]["all"][status] + 1
+        self.play_results["plays"]["all"][status] = self.play_results["plays"]["all"][status] + 1
 
         if result._host.name not in task["results"]:
             task["results"][result._host.name]={}
@@ -305,8 +307,8 @@ class CallbackModule(CallbackBase):
         play_name=self.play["play_name"]
 
         # Dont dump play if no task did run
-        if self.hosts_results["all"] != self._host_result_struct:
-            json_play={ "play": self.play, "env_rel_path": "../..", "tasks": self.tasks, "hosts_results": self.hosts_results, "all_mode": False }
+        if self.play_results["plays"][self.play["_uuid"]]["all"] != self._host_result_struct:
+            json_play={ "play": self.play, "env_rel_path": "../..", "tasks": self.tasks, "hosts_results": self.play_results["plays"][self.play["_uuid"]], "all_mode": False }
 
             play=self._template(self._playbook.get_loader(), CaradocTemplates.playbook, json_play)
             self._save_as_file("base/" + play_name + "/", "README.adoc", play)
@@ -357,6 +359,43 @@ class CaradocTemplates:
 {%- elif status == "unreachable" -%}💀
 {%- elif status == "running" -%}🪛
 {%- endif -%}
+{%- endmacro %}
+
+{%- macro get_vega_donut(host, hosts_results) -%}
+[vegalite,format="svg",subs="attributes"]
+....
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "title": { "text": "{{ host }}", "color": "{caradoc_label_color}", "fontSize": 18 },
+  "background": null,
+  "data": {
+    "values": {{ hosts_results[host]  | dict2items(key_name='status') | to_json  }}
+  },
+  "transform": [
+    {
+      "filter": "datum.value > 0"
+    }],
+  "encoding": {
+    "theta": {"field": "value", "type": "quantitative", "stack": true},
+    "color": {
+      "field": "status",
+      "type": "nominal",
+      "legend": {"labelColor": "{caradoc_label_color}", "titleColor": "{caradoc_label_color}", "titleFontSize": 16, "labelFontSize": 14},
+      "scale": {
+        "domain": ["changed", "ok", "skipped", "failed", "ignored_failed"],
+        "range": ["rgb( 241, 196, 15 )", "rgb( 39, 174, 96 )", "rgb( 41, 128, 185 )", "rgb(231,76, 60)", "rgb(107, 91, 149)"]
+      }
+    }
+  },
+  "layer": [
+    {"mark": {"type": "arc", "innerRadius":30, "outerRadius": 80}},
+    {
+      "mark": {"type": "text", "radius": 95, "fontSize":22},
+      "encoding": {"text": {"field": "value", "type": "quantitative"}}
+    }
+  ]
+}
+....
 {%- endmacro %}
 '''
     # injected in every produced adoc
@@ -456,62 +495,35 @@ include::{{ task_for_host }}.adoc[leveloffset=2,lines=1..12;18..-1]
     #TODO: use interactive graphif html or if some CARADOC_INTERACTIVE env var is true
     #TODO: find a way to show total
     playbook_charts='''
-== Charts
+[.text-center]
+{{ get_vega_donut("all", hosts_results) }}
 
-{% set rows = hosts_results | list | length  %}
-{% set rows = 3 if rows >=3 else rows%}
+.show hosts
+[%collapsible]
+====
+{% set rows = hosts_results | list | length -1 %}
+{% set rows = 3 if rows >=3 else rows %}
 [cols="
 {%- for i in range(rows) %}
 a{% if loop.index != loop.length %},{% endif %}
 {%- endfor -%}
 "]
-
 |====
-{% for host in hosts_results %}
+{% for host in hosts_results | sort %}
+{% if host != "all" %}
 |
-[vegalite,format="svg"]
-....
-{
-  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
-  "title": "{{ host }}",
-  "data": {
-    "values": {{ hosts_results[host]  | dict2items(key_name='status') | to_json  }}
-  },
-  "transform": [
-    {
-      "filter": "datum.value > 0"
-    }],
-  "encoding": {
-    "theta": {"field": "value", "type": "quantitative", "stack": true},
-    "color": {
-      "field": "status",
-      "type": "nominal",
-      "scale": {
-        "domain": ["changed", "ok", "skipped", "failed", "ignored_failed"],
-        "range": ["rgb( 241, 196, 15 )", "rgb( 39, 174, 96 )", "rgb( 41, 128, 185 )", "rgb(231,76, 60)", "rgb(107, 91, 149)"]
-      }
-    }
-  },
-  "layer": [
-    {"mark": {"type": "arc", "innerRadius":30, "outerRadius": 80}},
-    {
-      "mark": {"type": "text", "radius": 95, "fontSize":22},
-      "encoding": {"text": {"field": "value", "type": "quantitative"}}
-    }
-  ]
-}
-....
+{{ get_vega_donut(host, hosts_results) }}
+{% endif %}
 {% endfor %}
 {%- for i in range(hosts_results | list | length % rows) %}
 |
 {% endfor %}
 |====
+====
 '''
 
     playbook='''
 = PLAY: {{ play['play_name'] }}
-
-:toc:
 
 {% if not all_mode | default(False) %}
 include::./charts.adoc[]
@@ -519,19 +531,11 @@ include::./charts.adoc[]
 
 
 {% if not all_mode | default(False) %}
-== Links
-
-  * link:./all.adoc[all tasks]
-
 == Tasks non ok nor skipped
-
+link:./all.adoc[view all]
 {% else %}
-== Links
-
-  * link:./README.adoc[only non or nor skipped]
-
 == All tasks
-
+link:./README.adoc[view playbook summary]
 {% endif %}
 
 +++ <style> +++
@@ -547,9 +551,9 @@ table  a, table  a:hover { color: inherit; }
 {% set result_sorted=tasks[i]['results'] | dictsort %}
 {% for host, result in result_sorted %}
 {% if all_mode or ( (result.status | default('running') != 'ok') and (result.status | default('running') != 'skipped') ) %}
-| link:++{{ './' + tasks[i].filename + '/' + host + '.adoc' }}++[++{{ task_status_label(result.status | default('running')) }}++]
+| link:++{{ './' + tasks[i].filename + '/' + host + '.adoc' }}++[{{ task_status_label(result.status | default('running')) }}]
 | {{ host }}
-| link:++{{ './' + tasks[i].filename + '/' + 'README.adoc' }}++[++{{ tasks[i].task_name | replace("|","\|") }}++]
+| link:++{{ './' + tasks[i].filename + '/' + 'README.adoc' }}++[++{{ tasks[i].task_name | default('no_name') | replace("|","\|") }}++]
 {% endif %}
 {% endfor %}
 {% endfor %}
@@ -581,4 +585,15 @@ ifdef::env-vscode[]
 :relfilesuffix: .adoc
 :source-highlighter: highlight.js
 endif::[]
+
+ifeval::["{caradoc-theme}" == "dark"]
+:caradoc_label_color: white
+endif::[]
+ifeval::["{caradoc-theme}" != "dark"]
+:caradoc_label_color: black
++++ <style> +++
+code { background: Lavender   !important; }
++++ </style> +++
+endif::[]
+
 '''
