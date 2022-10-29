@@ -388,7 +388,7 @@ class CaradocTemplates:
     }
   },
   "layer": [
-    {"mark": {"type": "arc", "innerRadius":30, "outerRadius": 80}},
+    {"mark": {"type": "arc", "innerRadius":30, "outerRadius": 70}},
     {
       "mark": {"type": "text", "radius": 95, "fontSize":22},
       "encoding": {"text": {"field": "value", "type": "quantitative"}}
