@@ -352,12 +352,12 @@ class CaradocTemplates:
     jinja_macros='''
 {%- macro task_status_label(status) -%}
 {%- if status == "ok" -%}🟢
-{%- elif status == "changed" -%}🟠
+{%- elif status == "changed" -%}🟡
 {%- elif status == "failed" -%}🔴
 {%- elif status == "ignored_failed" -%}pass:[<s>🔴</s>]🔵
 {%- elif status == "skipped" -%}🔵
 {%- elif status == "unreachable" -%}💀
-{%- elif status == "running" -%}🪛
+{%- elif status == "running" -%}⚡
 {%- endif -%}
 {%- endmacro %}
 
