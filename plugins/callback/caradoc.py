@@ -155,6 +155,8 @@ class CallbackModule(CallbackBase):
             "filename": name,
             "start_time": str(time.time()), "results": {}
         }
+        self._save_play()
+        self._save_run()
         return
 
     # Check if couple of task name already referenced and managed a counter
@@ -292,11 +294,9 @@ class CallbackModule(CallbackBase):
         task["results"][result._host.name]["status"] = status
 
         self.task_end_count=self.task_end_count+1
-        self._render_task_result_templates(result, task["task_name"], status)
 
+        self._render_task_result_templates(result, task["task_name"], status)
         self._save_task_readme(task)
-        self._save_play()
-        self._save_run()
 
     def _save_task_readme(self, task):
         json_task_lists={"env_rel_path": "../../..", "task": task, "play_name": self.play["play_name"]}
