@@ -78,11 +78,13 @@ class CallbackModule(CallbackBase):
         super().__init__()
         # tasks related to current play
         self.tasks = dict()
-        self.hosts_results = {"all": self._host_result_struct.copy() }
+        # host results tracked for current play
+        self.play_results = { "plays": {}, "host_results": {"all": self._host_result_struct.copy() } }
+
         # Current playbook running
         self.play=None
 
-        # Computed file names may exist in more than one intance => tack them
+        # Track filenames of plays and count to avoid duplicated
         self.tasks_names_count= dict()
         self.play_names_count = dict()
 
@@ -118,7 +120,6 @@ class CallbackModule(CallbackBase):
         self.log.debug("v2_playbook_on_start")
 
         self._playbook=playbook
-        self.play_results = {"plays": { "all": self._host_result_struct.copy() }, "hosts": { "all": self._host_result_struct.copy() } }
         return
 
     def v2_playbook_on_play_start(self, play):
@@ -132,10 +133,10 @@ class CallbackModule(CallbackBase):
 
         if  self.play is not None:
             self._save_play()
-            self.tasks=dict()
             # TODO: ok to loose track of tasks but may should refer plays for global stats
+            self.tasks=dict()
 
-        self.play_results["plays"][play._uuid] = {"all": self._host_result_struct.copy() }
+        self.play_results["plays"][play._uuid] = { "host_results": {"all": self._host_result_struct.copy()}, "name": play.name }
         self.play = {"name": play.name, "play_name": play_name, "_uuid": play._uuid, "tasks": [], "attributes": play.hosts}
         return
 
@@ -278,14 +279,14 @@ class CallbackModule(CallbackBase):
         # FIXME: save result status + time end etc...
         task=self.tasks[result._task._uuid]
 
-        if result._host.name not in self.play_results["plays"][self.play["_uuid"]]:
-            self.play_results["plays"][self.play["_uuid"]][result._host.name] = self._host_result_struct.copy()
-        self.play_results["plays"][self.play["_uuid"]][result._host.name][status] = self.play_results["plays"][self.play["_uuid"]][result._host.name][status] + 1
+
+        if result._host.name not in self.play_results["plays"][self.play["_uuid"]]["host_results"]:
+            self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name] = self._host_result_struct.copy()
+        self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name][status] = self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name][status] + 1
 
         # TODO: also count per groups ?
-        self.play_results["plays"][self.play["_uuid"]]["all"][status] = self.play_results["plays"][self.play["_uuid"]]["all"][status] + 1
-        self.play_results["plays"]["all"][status] = self.play_results["plays"]["all"][status] + 1
-
+        self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"][status] = self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"][status] + 1
+        self.play_results["host_results"]["all"][status] = self.play_results["host_results"]["all"][status] + 1
         if result._host.name not in task["results"]:
             task["results"][result._host.name]={}
         task["results"][result._host.name]["status"] = status
@@ -295,6 +296,7 @@ class CallbackModule(CallbackBase):
 
         self._save_task_readme(task)
         self._save_play()
+        self._save_run()
 
     def _save_task_readme(self, task):
         json_task_lists={"env_rel_path": "../../..", "task": task, "play_name": self.play["play_name"]}
@@ -307,8 +309,8 @@ class CallbackModule(CallbackBase):
         play_name=self.play["play_name"]
 
         # Dont dump play if no task did run
-        if self.play_results["plays"][self.play["_uuid"]]["all"] != self._host_result_struct:
-            json_play={ "play": self.play, "env_rel_path": "../..", "tasks": self.tasks, "hosts_results": self.play_results["plays"][self.play["_uuid"]], "all_mode": False }
+        if self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"] != self._host_result_struct:
+            json_play={ "play": self.play, "env_rel_path": "../..", "tasks": self.tasks, "hosts_results": self.play_results["plays"][self.play["_uuid"]]["host_results"], "all_mode": False }
 
             play=self._template(self._playbook.get_loader(), CaradocTemplates.playbook, json_play)
             self._save_as_file("base/" + play_name + "/", "README.adoc", play)
@@ -319,6 +321,11 @@ class CallbackModule(CallbackBase):
             json_play["all_mode"] = True
             play=self._template(self._playbook.get_loader(), CaradocTemplates.playbook, json_play)
             self._save_as_file("base/" + play_name + "/", "all.adoc", play)
+
+    def _save_run(self):
+        json_run={ "play_results": self.play_results, "env_rel_path": ".", "tasks": self.tasks }
+        play=self._template(self._playbook.get_loader(), CaradocTemplates.run, json_run)
+        self._save_as_file("./", "README.adoc", play)
 
     def _save_as_file(self,path,name,content):
         path = os.path.join(self.log_folder, path)
@@ -559,6 +566,17 @@ table  a, table  a:hover { color: inherit; }
 {% endfor %}
 |====
 
+'''
+
+    run='''
+= ⚡ | 2022/10/26 - 20:36:32 - duration: 10:02:05
+
+=====
+[,json]
+-------
+{{ play_results | to_nice_json() }}
+-------
+=====
 '''
 
     tasks_list_header='''
