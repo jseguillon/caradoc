@@ -78,8 +78,12 @@ class CallbackModule(CallbackBase):
         super().__init__()
         # tasks related to current play
         self.tasks = dict()
-        # host results tracked for current play
+
+        # host results tracked for all plays
         self.play_results = { "plays": {}, "host_results": {"all": self._host_result_struct.copy() } }
+
+        # detailed latest results
+        self.latest_tasks = []
 
         # Current playbook running
         self.play=None
@@ -146,6 +150,9 @@ class CallbackModule(CallbackBase):
         return ""
 
     def v2_playbook_on_task_start(self, task, is_conditional, handler=False):
+        # Keep only 20 latests
+        self.latest_tasks = self.latest_tasks[-20:]
+
         # TODO: for task duration, see example on https://github.com/alikins/ansible/blob/devel/lib/ansible/plugins/callback/profile_tasks.py
         name=self._get_new_task_name(task)
         self.play["tasks"].append(str(task._uuid))
@@ -298,6 +305,15 @@ class CallbackModule(CallbackBase):
         self._render_task_result_templates(result, task["task_name"], status)
         self._save_task_readme(task)
 
+        if status != "skipped":
+            task_in_latest = list(filter(lambda test_list: test_list['task_uuid'] == result._task._uuid, self.latest_tasks))
+
+            if len(task_in_latest) == 0:
+                new_task_latest = {"task_uuid": result._task._uuid, "task_name": task["task_name"], "play_name": self.play["name"], "play_filename": self.play["filename"], "all_results": self._host_result_struct.copy(), "task_filename": task["filename"]}
+                self.latest_tasks.append(new_task_latest)
+                task_in_latest = [new_task_latest]
+            task_in_latest[0]["all_results"][status] = task_in_latest[0]["all_results"][status] + 1
+
     def _save_task_readme(self, task):
         json_task_lists={"env_rel_path": "../../..", "task": task, "play_name": self.play["play_name"]}
         play=self._template(self._playbook.get_loader(), CaradocTemplates.tasks_list, json_task_lists)
@@ -323,7 +339,7 @@ class CallbackModule(CallbackBase):
             self._save_as_file("base/" + play_name + "/", "all.adoc", play)
 
     def _save_run(self):
-        json_run={ "play_results": self.play_results, "env_rel_path": ".", "tasks": self.tasks }
+        json_run={ "play_results": self.play_results, "env_rel_path": ".", "tasks": self.tasks, "latest_tasks": self.latest_tasks[-20:]}
         play=self._template(self._playbook.get_loader(), CaradocTemplates.run, json_run)
         self._save_as_file("./", "README.adoc", play)
 
@@ -577,6 +593,15 @@ table  a, table  a:hover { color: inherit; }
 {{ play_results | to_nice_json() }}
 -------
 =====
+
+=====
+[,json]
+-------
+{{ latest_tasks | to_nice_json() }}
+-------
+=====
+'''
+
 '''
 
     tasks_list_header='''
