@@ -141,7 +141,7 @@ class CallbackModule(CallbackBase):
             self.tasks=dict()
 
         self.play_results["plays"][play._uuid] = { "host_results": {"all": self._host_result_struct.copy()}, "name": play.name }
-        self.play = {"name": play.name, "play_name": play_name, "_uuid": play._uuid, "tasks": [], "attributes": play.hosts}
+        self.play = {"name": play.name, "filename": play_name, "_uuid": play._uuid, "tasks": [], "attributes": play.hosts}
         return
 
     def v2_playbook_on_handler_task_start(self, task):
@@ -158,7 +158,7 @@ class CallbackModule(CallbackBase):
         self.play["tasks"].append(str(task._uuid))
         self.tasks[task._uuid] = {
             "task_name": task._attributes["name"],
-            "base_path": "base/" + self.play["play_name"] + "/" + name,
+            "base_path": "base/" + self.play["filename"] + "/" + name,
             "filename": name,
             "start_time": str(time.time()), "results": {}
         }
@@ -274,7 +274,7 @@ class CallbackModule(CallbackBase):
                                     "address": result._host.address,
                                     "implicit": result._host.implicit },
                           "status": status,
-                          "play_name": self.play["play_name"],
+                          "play_name": self.play["filename"],
                           "internal_result": internal_result,
                         }, "env_rel_path": "../../..", "name": current_task["filename"], "task_name": task_name
         }
@@ -315,14 +315,14 @@ class CallbackModule(CallbackBase):
             task_in_latest[0]["all_results"][status] = task_in_latest[0]["all_results"][status] + 1
 
     def _save_task_readme(self, task):
-        json_task_lists={"env_rel_path": "../../..", "task": task, "play_name": self.play["play_name"]}
+        json_task_lists={"env_rel_path": "../../..", "task": task, "play_name": self.play["filename"]}
         play=self._template(self._playbook.get_loader(), CaradocTemplates.tasks_list, json_task_lists)
 
         # TODO: same as _save_task TODO.
         self._save_as_file(task["base_path"] +"/", "README.adoc", play)
 
     def _save_play(self):
-        play_name=self.play["play_name"]
+        play_name=self.play["filename"]
 
         # Dont dump play if no task did run
         if self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"] != self._host_result_struct:
