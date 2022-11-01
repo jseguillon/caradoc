@@ -278,9 +278,11 @@ class CallbackModule(CallbackBase):
                           "internal_result": internal_result,
                         }, "env_rel_path": "../../..", "name": current_task["filename"], "task_name": task_name
         }
+        self._template_and_save(current_task["base_path"], result._host.name + ".adoc", CaradocTemplates.task_details, json_result)
 
-        task=self._template(self._playbook.get_loader(), CaradocTemplates.task_details, json_result)
-        self._save_as_file(current_task["base_path"], result._host.name + ".adoc", task)
+    def _template_and_save(self, path, name, template, tpl_vars):
+        result=self._template(self._playbook.get_loader(), template, tpl_vars)
+        self._save_as_file(path, name, result)
 
     # FIXME: deal with handlers
     def _save_task(self, result, status="ok"):
@@ -318,8 +320,7 @@ class CallbackModule(CallbackBase):
         json_task_lists={"env_rel_path": "../../..", "task": task, "play_name": self.play["filename"]}
         play=self._template(self._playbook.get_loader(), CaradocTemplates.tasks_list, json_task_lists)
 
-        # TODO: same as _save_task TODO.
-        self._save_as_file(task["base_path"] +"/", "README.adoc", play)
+        self._template_and_save(task["base_path"] +"/", "README.adoc", CaradocTemplates.tasks_list, json_task_lists)
 
     def _save_play(self):
         play_name=self.play["filename"]
@@ -328,20 +329,19 @@ class CallbackModule(CallbackBase):
         if self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"] != self._host_result_struct:
             json_play={ "play": self.play, "env_rel_path": "../..", "tasks": self.tasks, "hosts_results": self.play_results["plays"][self.play["_uuid"]]["host_results"], "all_mode": False }
 
-            play=self._template(self._playbook.get_loader(), CaradocTemplates.playbook, json_play)
-            self._save_as_file("base/" + play_name + "/", "README.adoc", play)
+            path = "base/" + play_name + "/"
 
-            play=self._template(self._playbook.get_loader(), CaradocTemplates.playbook_charts, json_play)
-            self._save_as_file("base/" + play_name + "/", "charts.adoc", play)
+            self._template_and_save(path, "README.adoc", CaradocTemplates.playbook, json_play)
+
+            self._template_and_save(path, "charts.adoc", CaradocTemplates.playbook_charts, json_play)
 
             json_play["all_mode"] = True
-            play=self._template(self._playbook.get_loader(), CaradocTemplates.playbook, json_play)
-            self._save_as_file("base/" + play_name + "/", "all.adoc", play)
+            self._template_and_save(path, "all.adoc", CaradocTemplates.playbook, json_play)
 
     def _save_run(self):
         json_run={ "play_results": self.play_results, "env_rel_path": ".", "tasks": self.tasks, "latest_tasks": self.latest_tasks[-20:]}
-        play=self._template(self._playbook.get_loader(), CaradocTemplates.run, json_run)
-        self._save_as_file("./", "README.adoc", play)
+
+        self._template_and_save("./", "README.adoc", CaradocTemplates.run, json_run)
 
     def _save_as_file(self,path,name,content):
         path = os.path.join(self.log_folder, path)
