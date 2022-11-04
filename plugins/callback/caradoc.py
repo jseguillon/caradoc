@@ -184,6 +184,7 @@ class CallbackModule(CallbackBase):
         return name
 
     def v2_runner_on_start(self, host, task):
+        # TODO: render task list with init of running for each host + track start time
         self.log.debug("v2_runner_on_start")
         return
 
@@ -257,6 +258,7 @@ class CallbackModule(CallbackBase):
     # TODO: may need some implementation of v2_runner_on_async_XXX also (ara does not implement anything)
 
     # For a task name, will render base template
+    # TODO: split args as separate file since its the same for all results
     def _render_task_result_templates(self,result, task_name, status):
         # TODO: a serializer may be better than this json tricky construction
         # Also in final design may not need all of this an rely or links:[] (for host as an example)
@@ -517,6 +519,7 @@ include::{{ task_for_host }}.adoc[leveloffset=2,lines=1..12;18..-1]
 
     #TODO: use interactive graphif html or if some CARADOC_INTERACTIVE env var is true
     #TODO: find a way to show total
+    #TODO: could we throttle to avoid blinking effects
     playbook_charts='''
 [.text-center]
 {{ get_vega_donut("all", hosts_results) }}
@@ -545,6 +548,7 @@ a{% if loop.index != loop.length %},{% endif %}
 ====
 '''
 
+    # TODO: create anchors for task on host
     playbook='''
 = PLAY: {{ play['name'] | default(play['name']) }}
 
@@ -600,8 +604,6 @@ table  a, table  a:hover { color: inherit; }
 {{ latest_tasks | to_nice_json() }}
 -------
 =====
-'''
-
 '''
 
     tasks_list_header='''
