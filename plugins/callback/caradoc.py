@@ -131,7 +131,7 @@ class CallbackModule(CallbackBase):
         play_name=re.sub(r"[^0-9a-zA-Z_\-.]", "_", play.name)
         if play.name in self.play_names_count:
             self.play_names_count[play.name] = self.play_names_count[play.name] + 1
-            play_name=play_name + "-" + str(self.play_names_count[play.name])
+            play_name = f"{play_name}-{str(self.play_names_count[play.name])}"
         else:
             self.play_names_count[play.name] = 1
 
@@ -158,7 +158,7 @@ class CallbackModule(CallbackBase):
         self.play["tasks"].append(str(task._uuid))
         self.tasks[task._uuid] = {
             "task_name": task._attributes["name"],
-            "base_path": "base/" + self.play["filename"] + "/" + name,
+            "base_path": f"base/{self.play['filename']}/{name}",
             "filename": name,
             "start_time": str(time.time()), "results": {}
         }
@@ -178,7 +178,7 @@ class CallbackModule(CallbackBase):
 
         if name in self.tasks_names_count:
             self.tasks_names_count[name] = self.tasks_names_count[name] + 1
-            name=name + "-" + str(self.tasks_names_count[name])
+            name=f"{name}-{str(self.tasks_names_count[name])}"
         else:
             self.tasks_names_count[name] = 1
         return name
@@ -331,7 +331,7 @@ class CallbackModule(CallbackBase):
         if self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"] != self._host_result_struct:
             json_play={ "play": self.play, "env_rel_path": "../..", "tasks": self.tasks, "hosts_results": self.play_results["plays"][self.play["_uuid"]]["host_results"], "all_mode": False }
 
-            path = "base/" + play_name + "/"
+            path = f"base/{play_name}/"
 
             self._template_and_save(path, "README.adoc", CaradocTemplates.playbook, json_play)
 
