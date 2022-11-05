@@ -111,6 +111,7 @@ class CallbackModule(CallbackBase):
         now = time.strftime("%Y%m%d-%H%M%S", time.localtime())
         self.log_folder = os.path.join(self.log_folder, now)
 
+        self.run_date = time.strftime("%Y/%m/%d - %H:%M:%S", time.localtime())
         if not os.path.exists(self.log_folder):
             makedirs_safe(self.log_folder)
 
@@ -255,6 +256,7 @@ class CallbackModule(CallbackBase):
         # FIXME: save tasks_list shoud be multiple saved each time a runner ends and not waiting playook to achieve
         # self._save_tasks_lists()
         self._save_play()
+        self._save_run()
     # TODO: may need some implementation of v2_runner_on_async_XXX also (ara does not implement anything)
 
     # For a task name, will render base template
@@ -320,7 +322,6 @@ class CallbackModule(CallbackBase):
 
     def _save_task_readme(self, task):
         json_task_lists={"env_rel_path": "../../..", "task": task, "play_name": self.play["filename"]}
-        play=self._template(self._playbook.get_loader(), CaradocTemplates.tasks_list, json_task_lists)
 
         self._template_and_save(task["base_path"] +"/", "README.adoc", CaradocTemplates.tasks_list, json_task_lists)
 
@@ -341,7 +342,7 @@ class CallbackModule(CallbackBase):
             self._template_and_save(path, "all.adoc", CaradocTemplates.playbook, json_play)
 
     def _save_run(self):
-        json_run={ "play_results": self.play_results, "env_rel_path": ".", "tasks": self.tasks, "latest_tasks": self.latest_tasks[-20:]}
+        json_run={ "play_results": self.play_results, "env_rel_path": ".", "tasks": self.tasks, "latest_tasks": self.latest_tasks, "run_date":self.run_date}
 
         self._template_and_save("./", "README.adoc", CaradocTemplates.run, json_run)
 
@@ -379,7 +380,7 @@ class CaradocTemplates:
 {%- if status == "ok" -%}🟢
 {%- elif status == "changed" -%}🟡
 {%- elif status == "failed" -%}🔴
-{%- elif status == "ignored_failed" -%}pass:[<s>🔴</s>]🔵
+{%- elif status == "ignored_failed" -%}🟣
 {%- elif status == "skipped" -%}🔵
 {%- elif status == "unreachable" -%}💀
 {%- elif status == "running" -%}⚡
@@ -589,7 +590,26 @@ table  a, table  a:hover { color: inherit; }
 '''
 
     run='''
-= ⚡ | 2022/10/26 - 20:36:32 - duration: 10:02:05
+= ⚡ | {{ run_date }}
+
+[cols="a,a"]
+|====
+|
+[.text-center]
+*Last 20 plays*
+|
+[.text-center]
+*Last 20 tasks (not skipped)*
+[%header,cols="70,5,5,5,5"]
+[.tasks_longest]
+[.emoji_table]
+!=====
+! Task ! 🟢 ! 🟡 ! 🔴 ! 🟣 !
+{% for x in latest_tasks|reverse %}
+     link:+++base/{{ x.play_filename }}/{{ x.task_filename }}/README.adoc+++[{{ x.task_name }}] ! {{ x.all_results.ok }} ! {{ x.all_results.changed }} ! {{ x.all_results.failed }} ! {{ x.all_results.ignored_failed }} !
+{% endfor %}
+!=====
+|====
 
 =====
 [,json]
