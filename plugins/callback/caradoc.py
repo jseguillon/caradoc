@@ -369,6 +369,143 @@ class CallbackModule(CallbackBase):
             convert_data=False,
             escape_backslashes=True
         )
+class CaradocTemplar(Templar):
+
+    def __init__(self, loader, shared_loader_obj=None, variables=None):
+        super().__init__(loader, shared_loader_obj, variables)
+
+    def do_template(self, data, preserve_trailing_newlines=True, escape_backslashes=True, fail_on_undefined=None, overrides=None, disable_lookups=False):
+        if self.jinja2_native and not isinstance(data, string_types):
+            return data
+
+        # For preserving the number of input newlines in the output (used
+        # later in this method)
+        data_newlines = _count_newlines_from_end(data)
+
+        if fail_on_undefined is None:
+            fail_on_undefined = self._fail_on_undefined_errors
+
+        has_template_overrides = data.startswith(JINJA2_OVERRIDE)
+
+        try:
+            # NOTE Creating an overlay that lives only inside do_template means that overrides are not applied
+            # when templating nested variables in AnsibleJ2Vars where Templar.environment is used, not the overlay.
+            # This is historic behavior that is kept for backwards compatibility.
+            if overrides:
+                myenv = self.environment.overlay(overrides)
+            elif has_template_overrides:
+                myenv = self.environment.overlay()
+            else:
+                myenv = self.environment
+
+            # Get jinja env overrides from template
+            if has_template_overrides:
+                eol = data.find('\n')
+                line = data[len(JINJA2_OVERRIDE):eol]
+                data = data[eol + 1:]
+                for pair in line.split(','):
+                    (key, val) = pair.split(':')
+                    key = key.strip()
+                    setattr(myenv, key, ast.literal_eval(val.strip()))
+
+            if escape_backslashes:
+                # Allow users to specify backslashes in playbooks as "\\" instead of as "\\\\".
+                data = _escape_backslashes(data, myenv)
+
+            try:
+                print("from string")
+                t = myenv.from_string(data)
+            except TemplateSyntaxError as e:
+                raise AnsibleError("template error while templating string: %s. String: %s" % (to_native(e), to_native(data)))
+            except Exception as e:
+                if 'recursion' in to_native(e):
+                    raise AnsibleError("recursive loop detected in template string: %s" % to_native(data))
+                else:
+                    return data
+
+            if disable_lookups:
+                t.globals['query'] = t.globals['q'] = t.globals['lookup'] = self._fail_lookup
+
+            jvars = AnsibleJ2Vars(self, t.globals)
+
+            # In case this is a recursive call to do_template we need to
+            # save/restore cur_context to prevent overriding __UNSAFE__.
+            cached_context = self.cur_context
+
+            self.cur_context = t.new_context(jvars, shared=True)
+            print("root rend")
+            rf = t.root_render_func(self.cur_context)
+
+            print("rendered")
+            try:
+                if self.jinja2_native:
+                    res = ansible_native_concat(rf)
+                else:
+                    res = j2_concat(rf)
+                unsafe = getattr(self.cur_context, 'unsafe', False)
+                if unsafe:
+                    res = wrap_var(res)
+            except TypeError as te:
+                if 'AnsibleUndefined' in to_native(te):
+                    errmsg = "Unable to look up a name or access an attribute in template string (%s).\n" % to_native(data)
+                    errmsg += "Make sure your variable name does not contain invalid characters like '-': %s" % to_native(te)
+                    raise AnsibleUndefinedVariable(errmsg)
+                else:
+                    display.debug("failing because of a type error, template data is: %s" % to_text(data))
+                    raise AnsibleError("Unexpected templating type error occurred on (%s): %s" % (to_native(data), to_native(te)))
+            finally:
+                self.cur_context = cached_context
+
+            print("res")
+            if self.jinja2_native and not isinstance(res, string_types):
+                return res
+
+            if preserve_trailing_newlines:
+                # The low level calls above do not preserve the newline
+                # characters at the end of the input data, so we use the
+                # calculate the difference in newlines and append them
+                # to the resulting output for parity
+                #
+                # jinja2 added a keep_trailing_newline option in 2.7 when
+                # creating an Environment.  That would let us make this code
+                # better (remove a single newline if
+                # preserve_trailing_newlines is False).  Once we can depend on
+                # that version being present, modify our code to set that when
+                # initializing self.environment and remove a single trailing
+                # newline here if preserve_newlines is False.
+                res_newlines = _count_newlines_from_end(res)
+                if data_newlines > res_newlines:
+                    res += self.environment.newline_sequence * (data_newlines - res_newlines)
+                    if unsafe:
+                        res = wrap_var(res)
+            return res
+        except (UndefinedError, AnsibleUndefinedVariable) as e:
+            if fail_on_undefined:
+                raise AnsibleUndefinedVariable(e)
+            else:
+                display.debug("Ignoring undefined failure: %s" % to_text(e))
+                return data
+
+    # for backwards compatibility in case anyone is using old private method directly
+        _do_template = do_template
+
+def _count_newlines_from_end(in_str):
+    '''
+    Counts the number of newlines at the end of a string. This is used during
+    the jinja2 templating to ensure the count matches the input, since some newlines
+    may be thrown away during the templating.
+    '''
+
+    try:
+        i = len(in_str)
+        j = i - 1
+        while in_str[j] == '\n':
+            j -= 1
+        return i - 1 - j
+    except IndexError:
+        # Uncommon cases: zero length string and string containing only newlines
+        return i
+
 
 class CaradocTemplates:
     # Applied to any adoc template, ensure fragments can be viewed with proper display
