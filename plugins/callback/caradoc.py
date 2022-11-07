@@ -20,7 +20,22 @@ from ansible.vars.clean import module_response_deepcopy, strip_internal_keys
 # Ansible CLI options are now in ansible.context in >= 2.8
 # https://github.com/ansible/ansible/commit/afdbb0d9d5bebb91f632f0d4a1364de5393ba17a
 
-from ansible.template import Templar
+from ansible.template import Templar, AnsibleEnvironment
+from ansible.template.vars import AnsibleJ2Vars
+from jinja2.utils import concat as j2_concat
+from jinja2.exceptions import TemplateSyntaxError, UndefinedError
+from ansible.module_utils._text import to_native, to_text, to_bytes
+
+from ansible.errors import (
+    AnsibleAssertionError,
+    AnsibleError,
+    AnsibleFilterError,
+    AnsibleLookupError,
+    AnsibleOptionsError,
+    AnsiblePluginRemovedError,
+    AnsibleUndefinedVariable,
+)
+
 from ansible.utils.path import makedirs_safe
 from ansible.module_utils.common.text.converters import to_bytes
 from ansible.utils.unsafe_proxy import wrap_var
@@ -61,6 +76,9 @@ ANSIBLE_SETUP_MODULES = frozenset(
         "ansible.legacy.setup",
     ]
 )
+
+# Cache for templates bytecode, used by CaradocTemplar
+CARADOC_CACHE= {}
 
 class CallbackModule(CallbackBase):
     """
@@ -282,10 +300,10 @@ class CallbackModule(CallbackBase):
                           "internal_result": internal_result,
                         }, "env_rel_path": "../../..", "name": current_task["filename"], "task_name": task_name
         }
-        self._template_and_save(current_task["base_path"], result._host.name + ".adoc", CaradocTemplates.task_details, json_result)
+        self._template_and_save(current_task["base_path"], result._host.name + ".adoc", CaradocTemplates.task_details,json_result, cache_name="task_details")
 
-    def _template_and_save(self, path, name, template, tpl_vars):
-        result=self._template(self._playbook.get_loader(), template, tpl_vars)
+    def _template_and_save(self, path, name, template, tpl_vars, cache_name=None):
+        result=self._template(self._playbook.get_loader(), template, tpl_vars, cache_name)
         self._save_as_file(path, name, result)
 
     # FIXME: deal with handlers
@@ -323,7 +341,7 @@ class CallbackModule(CallbackBase):
     def _save_task_readme(self, task):
         json_task_lists={"env_rel_path": "../../..", "task": task, "play_name": self.play["filename"]}
 
-        self._template_and_save(task["base_path"] +"/", "README.adoc", CaradocTemplates.tasks_list, json_task_lists)
+        self._template_and_save(task["base_path"] +"/", "README.adoc", CaradocTemplates.tasks_list, json_task_lists, cache_name="tasks_list")
 
     def _save_play(self):
         play_name=self.play["filename"]
@@ -334,17 +352,17 @@ class CallbackModule(CallbackBase):
 
             path = f"base/{play_name}/"
 
-            self._template_and_save(path, "README.adoc", CaradocTemplates.playbook, json_play)
+            self._template_and_save(path, "README.adoc", CaradocTemplates.playbook, json_play, cache_name="playbook")
 
-            self._template_and_save(path, "charts.adoc", CaradocTemplates.playbook_charts, json_play)
+            self._template_and_save(path, "charts.adoc", CaradocTemplates.playbook_charts, json_play, cache_name="playbook_charts")
 
             json_play["all_mode"] = True
-            self._template_and_save(path, "all.adoc", CaradocTemplates.playbook, json_play)
+            self._template_and_save(path, "all.adoc", CaradocTemplates.playbook, json_play, cache_name="playbook")
 
     def _save_run(self):
         json_run={ "play_results": self.play_results, "env_rel_path": ".", "tasks": self.tasks, "latest_tasks": self.latest_tasks, "run_date":self.run_date}
 
-        self._template_and_save("./", "README.adoc", CaradocTemplates.run, json_run)
+        self._template_and_save("./", "README.adoc", CaradocTemplates.run, json_run, cache_name="run")
 
     def _save_as_file(self,path,name,content):
         path = os.path.join(self.log_folder, path)
@@ -356,65 +374,39 @@ class CallbackModule(CallbackBase):
             fd.write(to_bytes(content))
 
     # Render a caradoc template, including jinja common macros plus static include of env if asked
-    def _template(self, loader, template, variables, no_env=False):
-        _templar = Templar(loader=loader, variables=variables)
+    def _template(self, loader, template, variables, cache_name, no_env=False):
+        # add special variable to refer a cache name for CaradocTemplar
+        variables["_cache_name"]=cache_name
+        _templar = CaradocTemplar(loader=loader, variables=variables)
 
         if not no_env:
             template = CaradocTemplates.jinja_macros + "\n" + CaradocTemplates.common_adoc + "\n" + template
         else:
             template = CaradocTemplates.jinja_macros + "\n"  + template
         return _templar.template(
-            template,
-            preserve_trailing_newlines=True,
-            convert_data=False,
-            escape_backslashes=True
+            template
         )
+
+# Specific Templar that deals with bytecode cache
 class CaradocTemplar(Templar):
 
     def __init__(self, loader, shared_loader_obj=None, variables=None):
         super().__init__(loader, shared_loader_obj, variables)
+        self.template_cache = {}
 
+    # Note: the template method is a simplified implementation of Templar. Only fail_on_undefined is supported
     def do_template(self, data, preserve_trailing_newlines=True, escape_backslashes=True, fail_on_undefined=None, overrides=None, disable_lookups=False):
-        if self.jinja2_native and not isinstance(data, string_types):
-            return data
-
-        # For preserving the number of input newlines in the output (used
-        # later in this method)
-        data_newlines = _count_newlines_from_end(data)
-
-        if fail_on_undefined is None:
-            fail_on_undefined = self._fail_on_undefined_errors
-
-        has_template_overrides = data.startswith(JINJA2_OVERRIDE)
-
         try:
-            # NOTE Creating an overlay that lives only inside do_template means that overrides are not applied
-            # when templating nested variables in AnsibleJ2Vars where Templar.environment is used, not the overlay.
-            # This is historic behavior that is kept for backwards compatibility.
-            if overrides:
-                myenv = self.environment.overlay(overrides)
-            elif has_template_overrides:
-                myenv = self.environment.overlay()
-            else:
-                myenv = self.environment
-
-            # Get jinja env overrides from template
-            if has_template_overrides:
-                eol = data.find('\n')
-                line = data[len(JINJA2_OVERRIDE):eol]
-                data = data[eol + 1:]
-                for pair in line.split(','):
-                    (key, val) = pair.split(':')
-                    key = key.strip()
-                    setattr(myenv, key, ast.literal_eval(val.strip()))
-
-            if escape_backslashes:
-                # Allow users to specify backslashes in playbooks as "\\" instead of as "\\\\".
-                data = _escape_backslashes(data, myenv)
+            myenv = self.environment
+            cache_name = self._available_variables["_cache_name"]
 
             try:
-                print("from string")
-                t = myenv.from_string(data)
+                if cache_name not in CARADOC_CACHE:
+                    t = myenv.from_string(data)
+                    CARADOC_CACHE[cache_name] = t
+                else:
+                    t = CARADOC_CACHE[cache_name]
+
             except TemplateSyntaxError as e:
                 raise AnsibleError("template error while templating string: %s. String: %s" % (to_native(e), to_native(data)))
             except Exception as e:
@@ -423,28 +415,13 @@ class CaradocTemplar(Templar):
                 else:
                     return data
 
-            if disable_lookups:
-                t.globals['query'] = t.globals['q'] = t.globals['lookup'] = self._fail_lookup
-
             jvars = AnsibleJ2Vars(self, t.globals)
 
-            # In case this is a recursive call to do_template we need to
-            # save/restore cur_context to prevent overriding __UNSAFE__.
-            cached_context = self.cur_context
+            ctx = t.new_context(jvars, shared=True)
+            rf = t.root_render_func(ctx)
 
-            self.cur_context = t.new_context(jvars, shared=True)
-            print("root rend")
-            rf = t.root_render_func(self.cur_context)
-
-            print("rendered")
             try:
-                if self.jinja2_native:
-                    res = ansible_native_concat(rf)
-                else:
-                    res = j2_concat(rf)
-                unsafe = getattr(self.cur_context, 'unsafe', False)
-                if unsafe:
-                    res = wrap_var(res)
+                res = j2_concat(rf)
             except TypeError as te:
                 if 'AnsibleUndefined' in to_native(te):
                     errmsg = "Unable to look up a name or access an attribute in template string (%s).\n" % to_native(data)
@@ -453,31 +430,6 @@ class CaradocTemplar(Templar):
                 else:
                     display.debug("failing because of a type error, template data is: %s" % to_text(data))
                     raise AnsibleError("Unexpected templating type error occurred on (%s): %s" % (to_native(data), to_native(te)))
-            finally:
-                self.cur_context = cached_context
-
-            print("res")
-            if self.jinja2_native and not isinstance(res, string_types):
-                return res
-
-            if preserve_trailing_newlines:
-                # The low level calls above do not preserve the newline
-                # characters at the end of the input data, so we use the
-                # calculate the difference in newlines and append them
-                # to the resulting output for parity
-                #
-                # jinja2 added a keep_trailing_newline option in 2.7 when
-                # creating an Environment.  That would let us make this code
-                # better (remove a single newline if
-                # preserve_trailing_newlines is False).  Once we can depend on
-                # that version being present, modify our code to set that when
-                # initializing self.environment and remove a single trailing
-                # newline here if preserve_newlines is False.
-                res_newlines = _count_newlines_from_end(res)
-                if data_newlines > res_newlines:
-                    res += self.environment.newline_sequence * (data_newlines - res_newlines)
-                    if unsafe:
-                        res = wrap_var(res)
             return res
         except (UndefinedError, AnsibleUndefinedVariable) as e:
             if fail_on_undefined:
@@ -488,24 +440,6 @@ class CaradocTemplar(Templar):
 
     # for backwards compatibility in case anyone is using old private method directly
         _do_template = do_template
-
-def _count_newlines_from_end(in_str):
-    '''
-    Counts the number of newlines at the end of a string. This is used during
-    the jinja2 templating to ensure the count matches the input, since some newlines
-    may be thrown away during the templating.
-    '''
-
-    try:
-        i = len(in_str)
-        j = i - 1
-        while in_str[j] == '\n':
-            j -= 1
-        return i - 1 - j
-    except IndexError:
-        # Uncommon cases: zero length string and string containing only newlines
-        return i
-
 
 class CaradocTemplates:
     # Applied to any adoc template, ensure fragments can be viewed with proper display
