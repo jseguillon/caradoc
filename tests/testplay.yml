@@ -116,7 +116,7 @@
             path: "{{ tempfile_1.path }}"
           when: tempfile_1.path is defined
 
-        - name: Add a line to a file
+        - name: Add another line to a file
           ansible.builtin.lineinfile:
             line: |-
               second block first line
@@ -126,7 +126,7 @@
             path: "{{ tempfile_1.path }}"
           when: tempfile_1.path is defined
 
-        - name: Add a line to a file
+        - name: Add again line to a file
           ansible.builtin.lineinfile:
             line: |-
               third block first line
