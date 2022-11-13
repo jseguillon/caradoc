@@ -83,6 +83,8 @@
           other: other
         - name: 2
           other: other2
+      tags:
+        - loop_control
 
     - name: Set a fact
       set_fact:
@@ -136,10 +138,41 @@
             path: "{{ tempfile_1.path }}"
           when: tempfile_1.path is defined
 
+        - name: "Task with {{ jinja }} into name"
+          debug:
+            msg: "and a jinja message: {{ True }}"
+          tags: jinja
+          ignore_errors: True
+
+        - name: "Task with an unkwon var into name"
+          debug:
+            msg: "{{ unknown_var }}"
+          tags: jinja
+          ignore_errors: True
+
+
+        - name: "Task with item {{ item }} into name"
+          debug:
+            msg: "{{ item  }}"
+          ignore_errors: True
+          tags: jinja
+          loop:
+            - a
+            - b
     - name: Do some include
       include_tasks: tasks.yaml
 
-- import_playbook: playbook_import.yaml
+    - ansible.builtin.template:
+        src: simple.yml.j2
+        dest: /tmp
+        mode: u=rw,g=r,o=r
+      run_once: True
+
+    - ansible.builtin.template:
+        src: raw-with-jinja.yml.j2
+        dest: /tmp
+        mode: u=rw,g=r,o=r
+      run_once: True
 
 # Test parrallel
 - hosts: three
