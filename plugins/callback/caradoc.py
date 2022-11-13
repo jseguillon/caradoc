@@ -181,6 +181,7 @@ class CallbackModule(CallbackBase):
             "start_time": str(time.time()),
             "tags": task._attributes["tags"],
             "action": task._attributes["action"],
+            "path": task.get_path(),
             "results": {},
         }
         self._save_play()
@@ -593,6 +594,7 @@ endif::[]
 
 * link:../README.adoc[{{ play_name }}](link:../all.adoc[all tasks])
 * link:../../../README.adoc[run]
+* link:{source-file-scheme}+++{{ task.path }}+++[source]
 
 == Results
 {% for task_for_host in task.results | default({}) %}
@@ -642,9 +644,9 @@ include::./charts.adoc[]
 
 == Links
 {% if not all_mode | default(False) %}
-* link:./all.adoc[view all, including ok and skipped]
+* link:./all.adoc[all tasks, including ok and skipped]
 {% else %}
-* link:./README.adoc[view playbook summary]
+* link:./README.adoc[playbook summary]
 {%  endif %}
 * link:../../README.adoc[run]
 +++ <style> +++
@@ -652,6 +654,12 @@ table tr td:first-child p a {
   text-decoration: none!important;
 }
 +++ </style> +++
+
+{% if not all_mode | default(False) %}
+== Tasks non ok nor skipped
+{% else %}
+== All tasks
+{%  endif %}
 
 [cols="1,30,~,~,15"]
 |====
@@ -683,7 +691,7 @@ table tr td:first-child p a {
 | Play
 | Task | 🟡 | 🔴 | 🟣 | 🟢
 {% for x in latest_tasks|reverse %}
-| {{ x.play_name }}
+| link:+++base/{{ x.play_filename }}/README.adoc+++[{{ x.play_name }}]
 | link:+++base/{{ x.play_filename }}/{{ x.task_filename }}/README.adoc+++[{{ x.task_name | default('no_name', True) |replace("|","\|") }}]
 | {{ x.all_results.changed }} | {{ x.all_results.failed }} | {{ x.all_results.ignored_failed }} | {{ x.all_results.ok }}
 {% endfor %}
@@ -710,8 +718,10 @@ table tr td:first-child p a {
 :toclevels: 2
 // TODO: set env var option for kroki localhost or any url
 :kroki-server-url: http://localhost:8000
+:source-file-scheme: file://
 ifdef::env-vscode[]
 :relfilesuffix: .adoc
+:source-file-scheme: vscode://file
 :source-highlighter: highlight.js
 endif::[]
 
