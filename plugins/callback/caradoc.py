@@ -387,6 +387,8 @@ class CallbackModule(CallbackBase):
             template
         )
 
+display = Display()
+
 # Specific Templar that deals with bytecode cache
 class CaradocTemplar(Templar):
 
