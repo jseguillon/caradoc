@@ -338,15 +338,14 @@ class CallbackModule(CallbackBase):
         self._render_task_result_templates(result, task["task_name"], status)
         self._save_task_readme(task)
 
-        if status != "skipped":
-            task_in_latest = list(filter(lambda test_list: test_list['task_uuid'] == result._task._uuid, self.latest_tasks))
+        task_in_latest = list(filter(lambda test_list: test_list['task_uuid'] == result._task._uuid, self.latest_tasks))
 
-            if len(task_in_latest) == 0:
-                new_task_latest = {"task_uuid": result._task._uuid, "task_name": wrap_var(task["task_name"]), "play_name": self.play["name"], "play_filename": self.play["filename"],
-                                    "all_results": self._host_result_struct.copy(), "task_filename": task["filename"]}
-                self.latest_tasks.append(new_task_latest)
-                task_in_latest = [new_task_latest]
-            task_in_latest[0]["all_results"][status] = task_in_latest[0]["all_results"][status] + 1
+        if len(task_in_latest) == 0:
+            new_task_latest = {"task_uuid": result._task._uuid, "task_name": wrap_var(task["task_name"]), "play_name": self.play["name"], "play_filename": self.play["filename"],
+                                "all_results": self._host_result_struct.copy(), "task_filename": task["filename"]}
+            self.latest_tasks.append(new_task_latest)
+            task_in_latest = [new_task_latest]
+        task_in_latest[0]["all_results"][status] = task_in_latest[0]["all_results"][status] + 1
 
     def _save_task_readme(self, task):
         json_task_lists={"env_rel_path": "../../../..", "task": task, "play_name": self.play["filename"]}
@@ -684,16 +683,16 @@ table tr td:first-child p a {
 
 [.text-center]
 *Last 20 tasks (not skipped)*
-[%header,cols="50,70,5,5,5,5"]
+[%header,cols="50,70,5,5,5,5,5"]
 [.tasks_longest]
 [.emoji_table]
 |====
 | Play
-| Task | 🟡 | 🔴 | 🟣 | 🟢
+| Task | 🟡 | 🔴 | 🟣 | 🟢 | 🔵
 {% for x in latest_tasks|reverse %}
 | link:+++base/{{ x.play_filename }}/README.adoc+++[{{ x.play_name }}]
 | link:+++base/{{ x.play_filename }}/{{ x.task_filename }}/README.adoc+++[{{ x.task_name | default('no_name', True) |replace("|","\|") }}]
-| {{ x.all_results.changed }} | {{ x.all_results.failed }} | {{ x.all_results.ignored_failed }} | {{ x.all_results.ok }}
+| {{ x.all_results.changed }} | {{ x.all_results.failed }} | {{ x.all_results.ignored_failed }} | {{ x.all_results.ok }} | {{ x.all_results.skipped }}
 {% endfor %}
 |====
 '''
