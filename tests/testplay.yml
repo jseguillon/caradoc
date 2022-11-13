@@ -111,32 +111,26 @@
         - name: Add a line to a file
           ansible.builtin.lineinfile:
             line: |-
-              first block first line
-              first block second line
-              first block third line
+              this
+              is
+              a file
             create: yes
             path: "{{ tempfile_1.path }}"
           when: tempfile_1.path is defined
 
         - name: Add another line to a file
-          ansible.builtin.lineinfile:
-            line: |-
-              second block first line
-              second block second line
-              second block third line
-            insertbefore: first block second line
-            path: "{{ tempfile_1.path }}"
-          when: tempfile_1.path is defined
+          ansible.builtin.copy:
+            content: |-
+              this
+              is a now modified file
+            dest: "{{ tempfile_1.path }}"
+          when:
+            - tempfile_1.path is defined
+            - inventory_hostname != 'host2'
+            - inventory_hostname != 'host3'
+          failed_when: inventory_hostname == 'host1'
 
-        - name: Add again line to a file
-          ansible.builtin.lineinfile:
-            line: |-
-              third block first line
-              third block second line
-              third block third line
-            insertbefore: second block second line
-            path: "{{ tempfile_1.path }}"
-          when: tempfile_1.path is defined
+
 
         - name: "Task with {{ jinja }} into name"
           debug:
