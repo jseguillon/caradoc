@@ -178,7 +178,10 @@ class CallbackModule(CallbackBase):
             "task_name": wrap_var(task._attributes["name"]),
             "base_path": f"base/{self.play['filename']}/{name}",
             "filename": name,
-            "start_time": str(time.time()), "results": {}
+            "start_time": str(time.time()),
+            "tags": task._attributes["tags"],
+            "action": task._attributes["action"],
+            "results": {},
         }
         self._save_play()
         self._save_run()
@@ -651,7 +654,7 @@ table tr td:first-child p a {
 }
 +++ </style> +++
 
-[cols="1,30,~"]
+[cols="1,30,~,~,15"]
 |====
 {% for i in play['tasks'] %}
 {% set result_sorted=tasks[i]['results'] | dictsort %}
@@ -660,6 +663,8 @@ table tr td:first-child p a {
 | link:++{{ './' + tasks[i].filename + '/' + host + '.adoc' }}++[{{ task_status_label(result.status | default('running')) }}]
 | {{ host }}
 | link:++{{ './' + tasks[i].filename + '/' + 'README.adoc' }}++[++{{ tasks[i].task_name | default('no_name') | replace("|","\|") }}++]
+| {{ tasks[i].action }}
+| {{ tasks[i].tags }}
 {% endif %}
 {% endfor %}
 {% endfor %}
@@ -670,38 +675,20 @@ table tr td:first-child p a {
     run='''
 = ⚡ | {{ run_date }}
 
-[cols="a,a"]
-|====
-|
-[.text-center]
-*Last 20 plays*
-|
 [.text-center]
 *Last 20 tasks (not skipped)*
-[%header,cols="70,5,5,5,5"]
+[%header,cols="50,70,5,5,5,5"]
 [.tasks_longest]
 [.emoji_table]
-!=====
-! Task ! 🟢 ! 🟡 ! 🔴 ! 🟣 !
-{% for x in latest_tasks|reverse %}
-     link:+++base/{{ x.play_filename }}/{{ x.task_filename }}/README.adoc+++[{{ x.task_name | replace("|","\|") }}] ! {{ x.all_results.ok }} ! {{ x.all_results.changed }} ! {{ x.all_results.failed }} ! {{ x.all_results.ignored_failed }} !
-{% endfor %}
-!=====
 |====
-
-=====
-[,json]
--------
-{{ play_results | to_nice_json() }}
--------
-=====
-
-=====
-[,json]
--------
-{{ latest_tasks | to_nice_json() }}
--------
-=====
+| Play
+| Task | 🟡 | 🔴 | 🟣 | 🟢
+{% for x in latest_tasks|reverse %}
+| {{ x.play_name }}
+| link:+++base/{{ x.play_filename }}/{{ x.task_filename }}/README.adoc+++[{{ x.task_name | default('no_name', True) |replace("|","\|") }}]
+| {{ x.all_results.changed }} | {{ x.all_results.failed }} | {{ x.all_results.ignored_failed }} | {{ x.all_results.ok }}
+{% endfor %}
+|====
 '''
 
     tasks_list_header='''
