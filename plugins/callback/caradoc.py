@@ -591,7 +591,8 @@ endif::[]
 
 == Links
 
-* playbook link:../README.adoc[{{ play_name }}](link:../all.adoc[all tasks])
+* link:../README.adoc[{{ play_name }}](link:../all.adoc[all tasks])
+* link:../../../README.adoc[run]
 
 == Results
 {% for task_for_host in task.results | default({}) %}
@@ -639,15 +640,13 @@ a{% if loop.index != loop.length %},{% endif %}
 include::./charts.adoc[]
 {% endif %}
 
-
+== Links
 {% if not all_mode | default(False) %}
-== Tasks non ok nor skipped
-link:./all.adoc[view all]
+* link:./all.adoc[view all, including ok and skipped]
 {% else %}
-== All tasks
-link:./README.adoc[view playbook summary]
-{% endif %}
-
+* link:./README.adoc[view playbook summary]
+{%  endif %}
+* link:../../README.adoc[run]
 +++ <style> +++
 table tr td:first-child p a {
   text-decoration: none!important;
