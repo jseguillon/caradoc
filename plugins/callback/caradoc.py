@@ -649,7 +649,6 @@ link:./README.adoc[view playbook summary]
 table tr td:first-child p a {
   text-decoration: none!important;
 }
-table  a, table  a:hover { color: inherit; }
 +++ </style> +++
 
 [cols="1,30,~"]
@@ -730,16 +729,13 @@ ifdef::env-vscode[]
 :source-highlighter: highlight.js
 endif::[]
 
-ifeval::["{caradoc-theme}" == "dark"]
-:caradoc_label_color: white
-endif::[]
 ifeval::["{caradoc-theme}" != "dark"]
 :caradoc_label_color: black
-+++ <style> +++
-+++ code { background: Lavender   !important; } +++
-+++ </style> +++
 endif::[]
-+++ <style> +++
-+++ #header, #content, #footer, #footnotes { max-width: none;} +++
-+++ </style> +++
+ifeval::["{caradoc-theme}" == "dark"]
+:caradoc_label_color: white
++++ <style> a, a:hover { color: #8cb4ff } a:hover {text-decoration: none} </style>+++
++++ <style> code { background: transparent !important; color: white !important }  .hljs-keyword,.hljs-link,.hljs-literal,.hljs-name,.hljs-symbol{color:#569cd6}.hljs-addition,.hljs-deletion{display:inline-block;width:100%}.hljs-link{text-decoration:underline}.hljs-built_in,.hljs-type{color:#4ec9b0}.hljs-class,.hljs-number{color:#b8d7a3}.hljs-meta-string,.hljs-string{color:#d69d85}.hljs-regexp,.hljs-template-tag{color:#9a5334}.hljs-formula,.hljs-function,.hljs-params,.hljs-subst,.hljs-title{color:#dcdcdc}.hljs-comment,.hljs-quote{color:#57a64a;font-style:italic}.hljs-doctag{color:#608b4e}.hljs-meta,.hljs-meta-keyword,.hljs-tag{color:#9b9b9b}.hljs-template-variable,.hljs-variable{color:#bd63c5}.hljs-attr,.hljs-attribute,.hljs-builtin-name{color:#9cdcfe}.hljs-section{color:gold}.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}.hljs-bullet,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-selector-pseudo,.hljs-selector-tag{color:#d7ba7d}.hljs-addition{background-color:var(--vscode-diffEditor-insertedTextBackground,rgba(155,185,85,.2));color:#9bb955}.hljs-deletion{background:var(--vscode-diffEditor-removedTextBackground,rgba(255,0,0,.2));color:red} </style> +++
+endif::[]
++++ <style> #header, #content, #footer, #footnotes { max-width: none;} </style> +++
 '''
