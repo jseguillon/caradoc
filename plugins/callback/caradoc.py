@@ -685,7 +685,7 @@ table  a, table  a:hover { color: inherit; }
 !=====
 ! Task ! 🟢 ! 🟡 ! 🔴 ! 🟣 !
 {% for x in latest_tasks|reverse %}
-     link:+++base/{{ x.play_filename }}/{{ x.task_filename }}/README.adoc+++[{{ x.task_name }}] ! {{ x.all_results.ok }} ! {{ x.all_results.changed }} ! {{ x.all_results.failed }} ! {{ x.all_results.ignored_failed }} !
+     link:+++base/{{ x.play_filename }}/{{ x.task_filename }}/README.adoc+++[{{ x.task_name | replace("|","\|") }}] ! {{ x.all_results.ok }} ! {{ x.all_results.changed }} ! {{ x.all_results.failed }} ! {{ x.all_results.ignored_failed }} !
 {% endfor %}
 !=====
 |====
