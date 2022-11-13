@@ -22,6 +22,7 @@ from ansible.vars.clean import module_response_deepcopy, strip_internal_keys
 
 from ansible.template import Templar, AnsibleEnvironment
 from ansible.template.vars import AnsibleJ2Vars
+from ansible.playbook.loop_control import LoopControl
 from jinja2.utils import concat as j2_concat
 from jinja2.exceptions import TemplateSyntaxError, UndefinedError
 from ansible.module_utils._text import to_native, to_text, to_bytes
@@ -35,6 +36,7 @@ from ansible.errors import (
     AnsiblePluginRemovedError,
     AnsibleUndefinedVariable,
 )
+from ansible.utils.display import Display
 
 from ansible.utils.path import makedirs_safe
 from ansible.module_utils.common.text.converters import to_bytes
@@ -122,6 +124,10 @@ class CallbackModule(CallbackBase):
         # Ensure base log folder exists
         if not os.path.exists(self.log_folder):
             makedirs_safe(self.log_folder)
+        if not os.path.exists(f"{self.log_folder}/.caradoc.env.adoc"):
+            # Dump default statics adoc env
+            with open(os.path.join(self.log_folder, ".caradoc.env.adoc"), "wb") as fd:
+                fd.write(to_bytes(CaradocTemplates.env))
 
         # Create a per playbook directory
         # FIXME: not good for git diff => prefer a upper directory then an id just like tasks
@@ -132,13 +138,6 @@ class CallbackModule(CallbackBase):
         self.run_date = time.strftime("%Y/%m/%d - %H:%M:%S", time.localtime())
         if not os.path.exists(self.log_folder):
             makedirs_safe(self.log_folder)
-
-        # Dump default statics adoc env and docinfo
-        with open(os.path.join(self.log_folder, "env.adoc"), "wb") as fd:
-            fd.write(to_bytes(CaradocTemplates.env))
-
-        with open(os.path.join(self.log_folder, "docinfo.html"), "wb") as fd:
-            fd.write(to_bytes(CaradocTemplates.docinfo))
 
         self.log.debug("v2_playbook_on_start")
 
@@ -176,7 +175,7 @@ class CallbackModule(CallbackBase):
         name=self._get_new_task_name(task)
         self.play["tasks"].append(str(task._uuid))
         self.tasks[task._uuid] = {
-            "task_name": task._attributes["name"],
+            "task_name": wrap_var(task._attributes["name"]),
             "base_path": f"base/{self.play['filename']}/{name}",
             "filename": name,
             "start_time": str(time.time()), "results": {}
@@ -261,7 +260,7 @@ class CallbackModule(CallbackBase):
             diff = self._get_diff(result._result['diff'])
             if diff:
                 diff = ansi_escape3.sub('', diff)
-                current_task["results"][result._host.name]["diff"]=diff
+                current_task["results"][result._host.name]["diff"]=wrap_var(diff)
 
 
     # TODO: track this event ?
@@ -286,10 +285,17 @@ class CallbackModule(CallbackBase):
         current_task = self.tasks[result._task._uuid]
         internal_result = current_task["results"][result._host.name]
         jsonified = json.dumps(results, cls=AnsibleJSONEncoder, ensure_ascii=False, sort_keys=False)
+        attributes = result._task._attributes
+        if "loop_control" in attributes and isinstance(attributes["loop_control"], LoopControl):
+            attributes["loop_control"] = None
+
+        # Make unsafe with wrap_vars so it will no try to render internal templates like arg {{ item }} in case of loop
+        attributes = wrap_var(attributes)
+
         json_result = { "result":
                         {
-                          "_result": results, # FIXME: also attributes may have template => make unsaffe
-                          "_task": {"_attributes": wrap_var(result._task._attributes)}, # Make unsafe with wrap_vars so it will no try to render internal templates like arg {{ item }} in case of loop
+                          "_result": wrap_var(results), # FIXME: also attributes may have template => make unsaffe
+                          "_task": {"_attributes": attributes },
                           "_host": {"vars": result._host.vars,
                                     "_uuid": result._host._uuid,
                                     "name": result._host.name,
@@ -297,8 +303,8 @@ class CallbackModule(CallbackBase):
                                     "implicit": result._host.implicit },
                           "status": status,
                           "play_name": self.play["filename"],
-                          "internal_result": internal_result,
-                        }, "env_rel_path": "../../..", "name": current_task["filename"], "task_name": task_name
+                          "internal_result": wrap_var(internal_result),
+                        }, "env_rel_path": "../../../..", "name": current_task["filename"], "task_name": wrap_var(task_name)
         }
         self._template_and_save(current_task["base_path"], result._host.name + ".adoc", CaradocTemplates.task_details,json_result, cache_name="task_details")
 
@@ -311,7 +317,6 @@ class CallbackModule(CallbackBase):
         # Get back name assigned to task uuid for consistent file naming
         # FIXME: save result status + time end etc...
         task=self.tasks[result._task._uuid]
-
 
         if result._host.name not in self.play_results["plays"][self.play["_uuid"]]["host_results"]:
             self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name] = self._host_result_struct.copy()
@@ -333,13 +338,14 @@ class CallbackModule(CallbackBase):
             task_in_latest = list(filter(lambda test_list: test_list['task_uuid'] == result._task._uuid, self.latest_tasks))
 
             if len(task_in_latest) == 0:
-                new_task_latest = {"task_uuid": result._task._uuid, "task_name": task["task_name"], "play_name": self.play["name"], "play_filename": self.play["filename"], "all_results": self._host_result_struct.copy(), "task_filename": task["filename"]}
+                new_task_latest = {"task_uuid": result._task._uuid, "task_name": wrap_var(task["task_name"]), "play_name": self.play["name"], "play_filename": self.play["filename"],
+                                    "all_results": self._host_result_struct.copy(), "task_filename": task["filename"]}
                 self.latest_tasks.append(new_task_latest)
                 task_in_latest = [new_task_latest]
             task_in_latest[0]["all_results"][status] = task_in_latest[0]["all_results"][status] + 1
 
     def _save_task_readme(self, task):
-        json_task_lists={"env_rel_path": "../../..", "task": task, "play_name": self.play["filename"]}
+        json_task_lists={"env_rel_path": "../../../..", "task": task, "play_name": self.play["filename"]}
 
         self._template_and_save(task["base_path"] +"/", "README.adoc", CaradocTemplates.tasks_list, json_task_lists, cache_name="tasks_list")
 
@@ -348,7 +354,7 @@ class CallbackModule(CallbackBase):
 
         # Dont dump play if no task did run
         if self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"] != self._host_result_struct:
-            json_play={ "play": self.play, "env_rel_path": "../..", "tasks": self.tasks, "hosts_results": self.play_results["plays"][self.play["_uuid"]]["host_results"], "all_mode": False }
+            json_play={ "play": self.play, "env_rel_path": "../../..", "tasks": self.tasks, "hosts_results": self.play_results["plays"][self.play["_uuid"]]["host_results"], "all_mode": False }
 
             path = f"base/{play_name}/"
 
@@ -360,7 +366,7 @@ class CallbackModule(CallbackBase):
             self._template_and_save(path, "all.adoc", CaradocTemplates.playbook, json_play, cache_name="playbook")
 
     def _save_run(self):
-        json_run={ "play_results": self.play_results, "env_rel_path": ".", "tasks": self.tasks, "latest_tasks": self.latest_tasks, "run_date":self.run_date}
+        json_run={ "play_results": self.play_results, "tasks": self.tasks, "latest_tasks": self.latest_tasks, "run_date":self.run_date}
 
         self._template_and_save("./", "README.adoc", CaradocTemplates.run, json_run, cache_name="run")
 
@@ -500,7 +506,7 @@ class CaradocTemplates:
     # injected in every produced adoc
     common_adoc='''
 ifndef::env-github[]
-include::{{ env_rel_path | default('.') }}/env.adoc[]
+include::{{ env_rel_path | default('..') }}/.caradoc.env.adoc[]
 //env_rel_path
 endif::[]
 '''
