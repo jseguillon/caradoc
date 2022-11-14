@@ -692,7 +692,11 @@ table tr td:first-child p a {
 {% for x in latest_tasks|reverse %}
 | link:+++base/{{ x.play_filename }}/README.adoc+++[{{ x.play_name }}]
 | link:+++base/{{ x.play_filename }}/{{ x.task_filename }}/README.adoc+++[{{ x.task_name | default('no_name', True) |replace("|","\|") }}]
-| {{ x.all_results.changed }} | {{ x.all_results.failed }} | {{ x.all_results.ignored_failed }} | {{ x.all_results.ok }} | {{ x.all_results.skipped }}
+| {{ x.all_results.changed if x.all_results.changed > 0 else '' }}
+| {{ x.all_results.failed if x.all_results.failed > 0 else '' }}
+| {{ x.all_results.ignored_failed if x.all_results.ignored_failed > 0 else '' }}
+| {{ x.all_results.ok if x.all_results.ok > 0 else '' }}
+| {{ x.all_results.skipped if x.all_results.skipped > 0 else '' }}
 {% endfor %}
 |====
 '''
@@ -732,5 +736,5 @@ ifeval::["{caradoc-theme}" == "dark"]
 +++ <style> a, a:hover { color: #8cb4ff } a:hover {text-decoration: none} </style>+++
 +++ <style> code { background: transparent !important; color: white !important }  .hljs-keyword,.hljs-link,.hljs-literal,.hljs-name,.hljs-symbol{color:#569cd6}.hljs-addition,.hljs-deletion{display:inline-block;width:100%}.hljs-link{text-decoration:underline}.hljs-built_in,.hljs-type{color:#4ec9b0}.hljs-class,.hljs-number{color:#b8d7a3}.hljs-meta-string,.hljs-string{color:#d69d85}.hljs-regexp,.hljs-template-tag{color:#9a5334}.hljs-formula,.hljs-function,.hljs-params,.hljs-subst,.hljs-title{color:#dcdcdc}.hljs-comment,.hljs-quote{color:#57a64a;font-style:italic}.hljs-doctag{color:#608b4e}.hljs-meta,.hljs-meta-keyword,.hljs-tag{color:#9b9b9b}.hljs-template-variable,.hljs-variable{color:#bd63c5}.hljs-attr,.hljs-attribute,.hljs-builtin-name{color:#9cdcfe}.hljs-section{color:gold}.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}.hljs-bullet,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-selector-pseudo,.hljs-selector-tag{color:#d7ba7d}.hljs-addition{background-color:var(--vscode-diffEditor-insertedTextBackground,rgba(155,185,85,.2));color:#9bb955}.hljs-deletion{background:var(--vscode-diffEditor-removedTextBackground,rgba(255,0,0,.2));color:red} </style> +++
 endif::[]
-+++ <style> #header, #content, #footer, #footnotes { max-width: none;} </style> +++
++++ <style> #header, #content, #footer, #footnotes { max-width: none;} .emoji_table td:nth-child(1n+3), .emoji_table th:nth-child(1n+3) { text-align: center; padding-left: 2px; padding-right: 2px; } </style> +++
 '''
