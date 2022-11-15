@@ -175,12 +175,12 @@ class CallbackModule(CallbackBase):
         name=self._get_new_task_name(task)
         self.play["tasks"].append(str(task._uuid))
         self.tasks[task._uuid] = {
-            "task_name": wrap_var(task._attributes["name"]),
+            "task_name": wrap_var(task.get_name()),
             "base_path": f"base/{self.play['filename']}/{name}",
             "filename": name,
             "start_time": str(time.time()),
-            "tags": task._attributes["tags"],
-            "action": task._attributes["action"],
+            "tags": task.tags,
+            "action": task.action,
             "path": task.get_path(),
             "results": {},
         }
@@ -190,9 +190,9 @@ class CallbackModule(CallbackBase):
 
     # Check if couple of task name already referenced and managed a counter
     def _get_new_task_name(self, task):
-        name=task._attributes["name"]
+        name=task.get_name()
         # TODO: track resolved action
-        action=task._attributes["action"]
+        action=task.action
         name="no_name" if name == "" else name
         name=name+"-"+action
 
@@ -289,17 +289,11 @@ class CallbackModule(CallbackBase):
         current_task = self.tasks[result._task._uuid]
         internal_result = current_task["results"][result._host.name]
         jsonified = json.dumps(results, cls=AnsibleJSONEncoder, ensure_ascii=False, sort_keys=False)
-        attributes = result._task._attributes
-        if "loop_control" in attributes and isinstance(attributes["loop_control"], LoopControl):
-            attributes["loop_control"] = None
-
-        # Make unsafe with wrap_vars so it will no try to render internal templates like arg {{ item }} in case of loop
-        attributes = wrap_var(attributes)
 
         json_result = { "result":
                         {
-                          "_result": wrap_var(results), # FIXME: also attributes may have template => make unsaffe
-                          "_task": {"_attributes": attributes },
+                          "_result": wrap_var(results),
+                          "task_name": wrap_var(task_name),
                           "_host": {"vars": result._host.vars,
                                     "_uuid": result._host._uuid,
                                     "name": result._host.name,
@@ -406,7 +400,8 @@ class CaradocTemplar(Templar):
         self.template_cache = {}
 
     # Note: the template method is a simplified implementation of Templar. Only fail_on_undefined is supported
-    def do_template(self, data, preserve_trailing_newlines=True, escape_backslashes=True, fail_on_undefined=None, overrides=None, disable_lookups=False):
+    def do_template(self, data, convert_bare=False, preserve_trailing_newlines=True, escape_backslashes=True, fail_on_undefined=None, overrides=None,
+                 convert_data=True, static_vars=None, cache=True, disable_lookups=False):
         try:
             myenv = self.environment
             cache_name = self._available_variables["_cache_name"]
@@ -522,13 +517,13 @@ endif::[]
     # TODO: host: remove or externalize in meta: "_uuid" for git diff possible
     # FIXME: sort tags
     task_details='''
-= {{ task_status_label(result.status) }} {{ result._host.name }} - {{ result._task._attributes.name | default("no name") }} - {{ result._task._attributes.action }}
+= {{ task_status_label(result.status) }} {{ result._host.name }}
 
 :toc:
 
 == Links
 
-  * task: link:./README.adoc[{{ result._task._attributes.name }}]
+  * task: link:./README.adoc[{{ result.task_name }}]
   * playbook: link:../README.adoc[{{ result.play_name }}]
 
 
@@ -548,23 +543,6 @@ endif::[]
 [,json]
 -------
 {{ result._result | default({}) |to_nice_json }}
--------
-=====
-
-== Attributes
-[cols="10,~",autowidth,stripes=hover]
-|====
-| action | {{ result._task._attributes["action"] }}
-| become | {{ result._task._attributes["become"] }}
-| tags | {{ result._task._attributes["tags"] }}
-|====
-
-.view all
-[%collapsible]
-=====
-[,json]
--------
-{{ result._task._attributes | default({}) |to_nice_json }}
 -------
 =====
 
@@ -670,7 +648,7 @@ table tr td:first-child p a {
 | {{ host }}
 | link:++{{ './' + tasks[i].filename + '/' + 'README.adoc' }}++[++{{ tasks[i].task_name | default('no_name') | replace("|","\|") }}++]
 | {{ tasks[i].action }}
-| {{ tasks[i].tags }}
+| {{ tasks[i].tags | default('[]') | string }}
 {% endif %}
 {% endfor %}
 {% endfor %}
@@ -692,11 +670,11 @@ table tr td:first-child p a {
 {% for x in latest_tasks|reverse %}
 | link:+++base/{{ x.play_filename }}/README.adoc+++[{{ x.play_name }}]
 | link:+++base/{{ x.play_filename }}/{{ x.task_filename }}/README.adoc+++[{{ x.task_name | default('no_name', True) |replace("|","\|") }}]
-| {{ x.all_results.changed if x.all_results.changed > 0 else '' }}
-| {{ x.all_results.failed if x.all_results.failed > 0 else '' }}
-| {{ x.all_results.ignored_failed if x.all_results.ignored_failed > 0 else '' }}
-| {{ x.all_results.ok if x.all_results.ok > 0 else '' }}
-| {{ x.all_results.skipped if x.all_results.skipped > 0 else '' }}
+| {{ x.all_results.changed | string if x.all_results.changed > 0 else '' }}
+| {{ x.all_results.failed | string if x.all_results.failed > 0 else '' }}
+| {{ x.all_results.ignored_failed | string if x.all_results.ignored_failed > 0 else '' }}
+| {{ x.all_results.ok | string if x.all_results.ok > 0 else '' }}
+| {{ x.all_results.skipped | string if x.all_results.skipped > 0 else '' }}
 {% endfor %}
 |====
 '''
