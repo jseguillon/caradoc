@@ -21,22 +21,63 @@ endif::[]
 
 == About the Project
 
-Caradoc Also Records Ansible as Asciidoc files
+Caradoc Also Records Ansible as Asciidoc files. Uses kroki/vegalite for charts. Best rendered with:
 
-== Example screenshots
+* VsCode AsciiDoctor extension ** version 3.0.1 **
+* Chromium AsciiDoctor extension
+* AsciiDoctor CLI
 
-Rendered in vscode
-
-[cols="10,~a"]
+[cols="~a,~a,~a"]
 |====
-| Playbook | image::docs/playbook.png[Playbook example,600]
-| Task | image::docs/task.png[Task example,600]
+| Run
+[#run,link=docs/run.png]
+image::docs/run.png[Run example,200]
+
+| Playbook
+[#playbook,link=docs/playbook.png]
+image::docs/playbook.png[Playbook example,200]
+
+| Result
+[#task,link=docs/task.png]
+image::docs/results.png[Results example,200]
+
+
 |====
 
-=== Usage
+
+== Install
+
+Download and place in default callback directory:
+
+-------
+mkdir -p ~/.ansible/plugins/callback
+cd ~/.ansible/plugins/callback
+curl -SL -O https://raw.githubusercontent.com/jseguillon/caradoc/main/plugins/callback/caradoc.py
+-------
+
+Or donwload somewhere else and add to callback path:
 
 -------
 ANSIBLE_CALLBACK_PLUGINS=/[path]/plugins/callback ansible-playbook -i tests/hosts tests/testplay.yml
+-------
+
+Run any ansible playbook and look at localy created `.caradoc` directory.
+
+=== Start kroki to get charts
+
+-------
+docker run -d  -p8000:8000 yuzutech/kroki
+-------
+
+=== Dark mode
+
+You can define asciidoc attribute `caradoc-theme` to `dark` to get better highlight.js and vegalite charts render.
+
+In vscode settings:
+-------
+"asciidoc.preview.asciidoctorAttributes": {
+  "caradoc-theme": "dark"
+}
 -------
 
 == Change Log
