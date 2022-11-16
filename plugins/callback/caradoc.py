@@ -185,7 +185,12 @@ class CallbackModule(CallbackBase):
             "results": {},
         }
         self._save_play()
+
+        new_task_latest = {"task_uuid": task._uuid, "task_name": wrap_var(task.get_name()), "play_name": self.play["name"], "play_filename": self.play["filename"],
+                                "all_results": self._host_result_struct.copy(), "task_filename": name}
+        self.latest_tasks.append(new_task_latest)
         self._save_run()
+
         return
 
     # Check if couple of task name already referenced and managed a counter
@@ -334,12 +339,8 @@ class CallbackModule(CallbackBase):
 
         task_in_latest = list(filter(lambda test_list: test_list['task_uuid'] == result._task._uuid, self.latest_tasks))
 
-        if len(task_in_latest) == 0:
-            new_task_latest = {"task_uuid": result._task._uuid, "task_name": wrap_var(task["task_name"]), "play_name": self.play["name"], "play_filename": self.play["filename"],
-                                "all_results": self._host_result_struct.copy(), "task_filename": task["filename"]}
-            self.latest_tasks.append(new_task_latest)
-            task_in_latest = [new_task_latest]
         task_in_latest[0]["all_results"][status] = task_in_latest[0]["all_results"][status] + 1
+        self._save_run()
 
     def _save_task_readme(self, task):
         json_task_lists={"env_rel_path": "../../../..", "task": task, "play_name": self.play["filename"]}
