@@ -279,8 +279,6 @@ class CallbackModule(CallbackBase):
 
     def v2_playbook_on_stats(self, stats):
         self.log.debug("v2_playbook_on_stats")
-        # FIXME: save tasks_list shoud be multiple saved each time a runner ends and not waiting playook to achieve
-        # self._save_tasks_lists()
         self._save_play()
         self._save_run()
     # TODO: may need some implementation of v2_runner_on_async_XXX also (ara does not implement anything)
@@ -335,7 +333,7 @@ class CallbackModule(CallbackBase):
     def _save_task_readme(self, task):
         json_task_lists={"env_rel_path": "../../../..", "task": task, "play_name": self.play["filename"]}
 
-        self._template_and_save(task["base_path"] +"/", "README.adoc", CaradocTemplates.tasks_list, json_task_lists, cache_name="tasks_list")
+        self._template_and_save(task["base_path"] +"/", "README.adoc", CaradocTemplates.task, json_task_lists, cache_name="tasks")
 
     def _save_play(self):
         play_name=self.play["filename"]
@@ -503,9 +501,7 @@ endif::[]
     # Raw result
     result='{{ result | default({}) |to_nice_json }}'
 
-
-    # FIXME: need to be ordered by host name for stable and minimize diff
-    tasks_list='''
+    task='''
 = TASK: {{ task.task_name }}
 
 :toc:
@@ -632,8 +628,8 @@ table tr td:first-child p a {
 | Play
 | Task | 🟡 | 🔴 | 🟣 | 🟢 | 🔵
 {% for x in latest_tasks|reverse %}
-| link:+++base/{{ x.play_filename }}/README.adoc+++[{{ x.play_name }}]
-| link:+++base/{{ x.play_filename }}/{{ x.task_filename }}/README.adoc+++[{{ x.task_name | default('no_name', True) |replace("|","\|") }}]
+| link:+++plays/{{ x.play_filename }}/README.adoc+++[{{ x.play_name }}]
+| link:+++plays/{{ x.play_filename }}/{{ x.task_filename }}/README.adoc+++[{{ x.task_name | default('no_name', True) |replace("|","\|") }}]
 | {{ x.all_results.changed | string if x.all_results.changed > 0 else '' }}
 | {{ x.all_results.failed | string if x.all_results.failed > 0 else '' }}
 | {{ x.all_results.ignored_failed | string if x.all_results.ignored_failed > 0 else '' }}
@@ -641,21 +637,6 @@ table tr td:first-child p a {
 | {{ x.all_results.skipped | string if x.all_results.skipped > 0 else '' }}
 {% endfor %}
 |====
-'''
-
-    tasks_list_header='''
-'''
-
-    # include header + one list as var + ifdev graphics (?)
-    tasks_list_page='''
-'''
-
-    docinfo='''
-//TODO
-'''
-
-    # or only html
-    env_html='''
 '''
 
     # Mainlys tricks for kroki and vscode
