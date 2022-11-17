@@ -600,7 +600,7 @@ table tr td:first-child p a {
 
 [cols="1,30,~,~,15"]
 |====
-{% for i in play['tasks'] %}
+{% for i in play['tasks'] | reverse %}
 {% set result_sorted=tasks[i]['results'] | dictsort %}
 {% for host, result in result_sorted %}
 {% if all_mode or ( (result.status | default('running') != 'ok') and (result.status | default('running') != 'skipped') ) %}
