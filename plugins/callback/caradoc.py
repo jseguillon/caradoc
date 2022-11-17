@@ -581,7 +581,7 @@ include::./charts.adoc[]
 
 == Links
 {% if not all_mode | default(False) %}
-* link:./all.adoc[all tasks, including ok and skipped]
+* link:./all.adoc[all results, including ok and skipped]
 {% else %}
 * link:./README.adoc[playbook summary]
 {%  endif %}
@@ -593,9 +593,9 @@ table tr td:first-child p a {
 +++ </style> +++
 
 {% if not all_mode | default(False) %}
-== Tasks non ok nor skipped
+== Results, excluded ok and skipped
 {% else %}
-== All tasks
+== All results
 {%  endif %}
 
 [cols="1,30,~,~,15"]
