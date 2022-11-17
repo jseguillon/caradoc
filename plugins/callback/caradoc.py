@@ -176,7 +176,7 @@ class CallbackModule(CallbackBase):
         self.play["tasks"].append(str(task._uuid))
         self.tasks[task._uuid] = {
             "task_name": wrap_var(task.get_name()),
-            "base_path": f"base/{self.play['filename']}/{name}",
+            "base_path": f"plays/{self.play['filename']}/{name}",
             "filename": name,
             "start_time": str(time.time()),
             "tags": task.tags,
@@ -354,7 +354,7 @@ class CallbackModule(CallbackBase):
         if self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"] != self._host_result_struct:
             json_play={ "play": self.play, "env_rel_path": "../../..", "tasks": self.tasks, "hosts_results": self.play_results["plays"][self.play["_uuid"]]["host_results"], "all_mode": False }
 
-            path = f"base/{play_name}/"
+            path = f"plays/{play_name}/"
 
             self._template_and_save(path, "README.adoc", CaradocTemplates.playbook, json_play, cache_name="playbook")
 
