@@ -318,28 +318,28 @@ class CallbackModule(CallbackBase):
     # FIXME: deal with handlers
     def _save_task(self, result, status="ok"):
         # Get back name assigned to task uuid for consistent file naming
-        # FIXME: save result status + time end etc...
-        task=self.tasks[result._task._uuid]
+        # TODO: to deal with handler: create new task here => some refactor is needed
+        if result._task._uuid in self.tasks:
+            task=self.tasks[result._task._uuid]
 
-        if result._host.name not in self.play_results["plays"][self.play["_uuid"]]["host_results"]:
-            self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name] = self._host_result_struct.copy()
-        self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name][status] = self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name][status] + 1
+            if result._host.name not in self.play_results["plays"][self.play["_uuid"]]["host_results"]:
+                self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name] = self._host_result_struct.copy()
+            self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name][status] = self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name][status] + 1
 
-        # TODO: also count per groups ?
-        self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"][status] = self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"][status] + 1
-        self.play_results["host_results"]["all"][status] = self.play_results["host_results"]["all"][status] + 1
-        if result._host.name not in task["results"]:
-            task["results"][result._host.name]={}
-        task["results"][result._host.name]["status"] = status
+            # TODO: also count per groups ?
+            self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"][status] = self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"][status] + 1
+            self.play_results["host_results"]["all"][status] = self.play_results["host_results"]["all"][status] + 1
+            if result._host.name not in task["results"]:
+                task["results"][result._host.name]={}
+            task["results"][result._host.name]["status"] = status
+            self.task_end_count=self.task_end_count+1
 
-        self.task_end_count=self.task_end_count+1
+            self._render_task_result_templates(result, task["task_name"], status)
+            self._save_task_readme(task)
 
-        self._render_task_result_templates(result, task["task_name"], status)
-        self._save_task_readme(task)
+            task_in_latest = list(filter(lambda test_list: test_list['task_uuid'] == result._task._uuid, self.latest_tasks))
 
-        task_in_latest = list(filter(lambda test_list: test_list['task_uuid'] == result._task._uuid, self.latest_tasks))
-
-        task_in_latest[0]["all_results"][status] = task_in_latest[0]["all_results"][status] + 1
+            task_in_latest[0]["all_results"][status] = task_in_latest[0]["all_results"][status] + 1
         self._save_run()
 
     def _save_task_readme(self, task):
