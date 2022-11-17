@@ -295,24 +295,11 @@ class CallbackModule(CallbackBase):
         internal_result = current_task["results"][result._host.name]
         jsonified = json.dumps(results, cls=AnsibleJSONEncoder, ensure_ascii=False, sort_keys=False)
 
-        json_result = { "result":
-                        {
-                          "_result": wrap_var(results),
-                          "task_name": wrap_var(task_name),
-                          "_host": {"vars": result._host.vars,
-                                    "_uuid": result._host._uuid,
-                                    "name": result._host.name,
-                                    "address": result._host.address,
-                                    "implicit": result._host.implicit },
-                          "status": status,
-                          "play_name": self.play["filename"],
-                          "internal_result": wrap_var(internal_result),
-                        }, "env_rel_path": "../../../..", "name": current_task["filename"], "task_name": wrap_var(task_name)
-        }
-        self._template_and_save(current_task["base_path"], result._host.name + ".adoc", CaradocTemplates.task_details,json_result, cache_name="task_details")
+        json_result = { "result": wrap_var(results) }
+        self._template_and_save(current_task["base_path"], result._host.name + ".json", CaradocTemplates.result,json_result, cache_name="result", no_env=True )
 
-    def _template_and_save(self, path, name, template, tpl_vars, cache_name=None):
-        result=self._template(self._playbook.get_loader(), template, tpl_vars, cache_name)
+    def _template_and_save(self, path, name, template, tpl_vars, cache_name=None, no_env=False):
+        result=self._template(self._playbook.get_loader(), template, tpl_vars, cache_name, no_env)
         self._save_as_file(path, name, result)
 
     # FIXME: deal with handlers
@@ -332,6 +319,9 @@ class CallbackModule(CallbackBase):
             if result._host.name not in task["results"]:
                 task["results"][result._host.name]={}
             task["results"][result._host.name]["status"] = status
+
+            task["results"][result._host.name]["result"] = wrap_var(result._result),
+
             self.task_end_count=self.task_end_count+1
 
             self._render_task_result_templates(result, task["task_name"], status)
@@ -510,63 +500,15 @@ include::{{ env_rel_path | default('..') }}/.caradoc.env.adoc[]
 endif::[]
 '''
 
-    # Solo task adoc
-    # TODO: consider a jinja macro because code seems a bit duplicate
-    # TODO: would be cool if by default is open even from include but only if few lines (can we compute number of lines ?)
-    # TODO: result => extract usefull values (msg if changed, skip_reason if skipped, error if error(?), others to be collected) and make the rest collapse
-    # TODO: host: show vars "ansible_host", "inventory_file" and "inventory_dir" if exists
-    # TODO: host: remove or externalize in meta: "_uuid" for git diff possible
-    # FIXME: sort tags
-    task_details='''
-= {{ task_status_label(result.status) }} {{ result._host.name }}
+    # Raw result
+    result='{{ result | default({}) |to_nice_json }}'
 
-:toc:
-
-== Links
-
-  * task: link:./README.adoc[{{ result.task_name }}]
-  * playbook: link:../README.adoc[{{ result.play_name }}]
-
-
-{% if result.internal_result.diff | default('') %}
-== Diff
-=====
-[,diff]
--------
-{{ result.internal_result.diff | default('') }}
--------
-=====
-{% endif %}
-
-== Result
-
-=====
-[,json]
--------
-{{ result._result | default({}) |to_nice_json }}
--------
-=====
-
-== Host
-[cols="10,~",autowidth,stripes=hover]
-|====
-| name | {{ result._host["name"] }}
-| address | {{ result._host["address"] }}
-|====
-
-.view all
-[%collapsible]
-=====
-[,json]
--------
-{{ result._host | default({}) |to_nice_json }}
--------
-=====
-'''
 
     # FIXME: need to be ordered by host name for stable and minimize diff
     tasks_list='''
 = TASK: {{ task.task_name }}
+
+:toc:
 
 == Links
 
@@ -575,10 +517,31 @@ endif::[]
 * link:{source-file-scheme}+++{{ task.path }}+++[source]
 
 == Results
-{% for task_for_host in task.results | default({}) %}
-include::{{ task_for_host }}.adoc[leveloffset=2,lines=1..12;18..-1]
-{%endfor%}
+{% for host in task.results | default({}) %}
 
+=== {{ task_status_label(task.results[host].status | default('running')) }} {{ host }} (link:./{{ host }}.json[view raw])
+
+{% if task.results[host].diff | default('') %}
+==== Diff
+
+[,diff]
+-------
+{{ task.results[host].diff | default('') }}
+-------
+
+{% endif %}
+
+==== Result
+
+.hide/show
+[%collapsible%open]
+=====
+[,json]
+-------
+include::{{ host }}.json[]
+-------
+=====
+{%endfor%}
 '''
 
     #TODO: use interactive graphif html or if some CARADOC_INTERACTIVE env var is true
