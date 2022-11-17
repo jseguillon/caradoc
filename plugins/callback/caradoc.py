@@ -517,7 +517,7 @@ endif::[]
 * link:{source-file-scheme}+++{{ task.path }}+++[source]
 
 == Results
-{% for host in task.results | default({}) %}
+{% for host in task.results | default({})  | sort %}
 
 === {{ task_status_label(task.results[host].status | default('running')) }} {{ host }} (link:./{{ host }}.json[view raw])
 
