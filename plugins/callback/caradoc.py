@@ -328,6 +328,16 @@ class CallbackModule(CallbackBase):
             task_in_latest = list(filter(lambda test_list: test_list['task_uuid'] == result._task._uuid, self.latest_tasks))
 
             task_in_latest[0]["all_results"][status] = task_in_latest[0]["all_results"][status] + 1
+
+            # a changed or ignored result also counts as ok
+            if (status=="changed" or status=="ignored_failed"):
+                self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name]["ok"] = self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name]["ok"] + 1
+                print(self.play_results["host_results"]["all"]["ok"])
+                self.play_results["host_results"]["all"]["ok"] = self.play_results["host_results"]["all"]["ok"] + 1
+                print(self.play_results["host_results"]["all"]["ok"])
+                task_in_latest[0]["all_results"]["ok"] = task_in_latest[0]["all_results"]["ok"] + 1
+                self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"]["ok"] = self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"]["ok"] + 1
+
         self._save_run()
 
     def _save_task_readme(self, task):
