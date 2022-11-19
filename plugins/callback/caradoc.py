@@ -146,10 +146,12 @@ class CallbackModule(CallbackBase):
 
     def v2_playbook_on_play_start(self, play):
         self.log.debug("v2_playbook_on_play_start")
-        play_name=re.sub(r"[^0-9a-zA-Z_\-.]", "_", play.name)
+        play_filename=re.sub(r"[^0-9a-zA-Z_\-.]", "_", play.name)
+        play_name=play.name
         if play.name in self.play_names_count:
             self.play_names_count[play.name] = self.play_names_count[play.name] + 1
-            play_name = f"{play_name}-{str(self.play_names_count[play.name])}"
+            play_filename = f"{play_name}-{str(self.play_names_count[play.name])}"
+            play_name = f"{play_name} ({str(self.play_names_count[play.name])})"
         else:
             self.play_names_count[play.name] = 1
 
@@ -158,8 +160,8 @@ class CallbackModule(CallbackBase):
             # TODO: ok to loose track of tasks but may should refer plays for global stats
             self.tasks=dict()
 
-        self.play_results["plays"][play._uuid] = { "host_results": {"all": self._host_result_struct.copy()}, "name": play.name }
-        self.play = {"name": play.name, "filename": play_name, "_uuid": play._uuid, "tasks": [], "attributes": play.hosts}
+        self.play_results["plays"][play._uuid] = { "host_results": {"all": self._host_result_struct.copy()}, "name": play_name }
+        self.play = {"name": play_name, "filename": play_filename, "_uuid": play._uuid, "tasks": [], "attributes": play.hosts}
         return
 
     def v2_playbook_on_handler_task_start(self, task):
