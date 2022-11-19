@@ -128,6 +128,9 @@ class CallbackModule(CallbackBase):
             # Dump default statics adoc env
             with open(os.path.join(self.log_folder, ".caradoc.env.adoc"), "wb") as fd:
                 fd.write(to_bytes(CaradocTemplates.env))
+        if not os.path.exists(f"{self.log_folder}/.caradoc.css.adoc"):
+            with open(os.path.join(self.log_folder, ".caradoc.css.adoc"), "wb") as fd:
+                fd.write(to_bytes(CaradocTemplates.css))
 
         # Create a per playbook directory
         # FIXME: not good for git diff => prefer a upper directory then an id just like tasks
@@ -296,10 +299,10 @@ class CallbackModule(CallbackBase):
         jsonified = json.dumps(results, cls=AnsibleJSONEncoder, ensure_ascii=False, sort_keys=False)
 
         json_result = { "result": wrap_var(results) }
-        self._template_and_save(current_task["base_path"], result._host.name + ".json", CaradocTemplates.result,json_result, cache_name="result", no_env=True )
+        self._template_and_save(current_task["base_path"], result._host.name + ".json", CaradocTemplates.result,json_result, cache_name="result")
 
-    def _template_and_save(self, path, name, template, tpl_vars, cache_name=None, no_env=False):
-        result=self._template(self._playbook.get_loader(), template, tpl_vars, cache_name, no_env)
+    def _template_and_save(self, path, name, template, tpl_vars, cache_name=None):
+        result=self._template(self._playbook.get_loader(), template, tpl_vars, cache_name)
         self._save_as_file(path, name, result)
 
     # FIXME: deal with handlers
@@ -313,7 +316,6 @@ class CallbackModule(CallbackBase):
                 self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name] = self._host_result_struct.copy()
             self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name][status] = self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name][status] + 1
 
-            # TODO: also count per groups ?
             self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"][status] = self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"][status] + 1
             self.play_results["host_results"]["all"][status] = self.play_results["host_results"]["all"][status] + 1
             if result._host.name not in task["results"]:
@@ -334,9 +336,9 @@ class CallbackModule(CallbackBase):
             # a changed or ignored result also counts as ok
             if (status=="changed" or status=="ignored_failed"):
                 self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name]["ok"] = self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name]["ok"] + 1
-                print(self.play_results["host_results"]["all"]["ok"])
+
                 self.play_results["host_results"]["all"]["ok"] = self.play_results["host_results"]["all"]["ok"] + 1
-                print(self.play_results["host_results"]["all"]["ok"])
+
                 task_in_latest[0]["all_results"]["ok"] = task_in_latest[0]["all_results"]["ok"] + 1
                 self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"]["ok"] = self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"]["ok"] + 1
 
@@ -378,15 +380,12 @@ class CallbackModule(CallbackBase):
             fd.write(to_bytes(content))
 
     # Render a caradoc template, including jinja common macros plus static include of env if asked
-    def _template(self, loader, template, variables, cache_name, no_env=False):
+    def _template(self, loader, template, variables, cache_name):
         # add special variable to refer a cache name for CaradocTemplar
         variables["_cache_name"]=cache_name
         _templar = CaradocTemplar(loader=loader, variables=variables)
 
-        if not no_env:
-            template = CaradocTemplates.jinja_macros + "\n" + CaradocTemplates.common_adoc + "\n" + template
-        else:
-            template = CaradocTemplates.jinja_macros + "\n"  + template
+        template = CaradocTemplates.jinja_macros + "\n"  + template
         return _templar.template(
             template
         )
@@ -502,27 +501,21 @@ class CaradocTemplates:
 ....
 {%- endmacro %}
 '''
-    # injected in every produced adoc
-    common_adoc='''
-ifndef::env-github[]
-include::{{ env_rel_path | default('..') }}/.caradoc.env.adoc[]
-//env_rel_path
-endif::[]
-'''
 
     # Raw result
     result='{{ result | default({}) |to_nice_json }}'
-
     task='''
-= TASK: {{ task.task_name }}
+include::{{ env_rel_path | default('..') }}/.caradoc.env.adoc[]
+
+= TASK: {{ task.task_name }} (link:{source-file-scheme}+++{{ task.path }}+++[view source])
 
 :toc:
+include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 
 == Links
 
-* link:../README.adoc[{{ play_name }}](link:../all.adoc[all tasks])
-* link:../../../README.adoc[run]
-* link:{source-file-scheme}+++{{ task.path }}+++[source]
+* Playbook: link:../README.adoc[{{ play_name }}](link:../all.adoc[all tasks])
+* Run: link:../../../README.adoc[run]
 
 == Results
 {% for host in task.results | default({})  | sort %}
@@ -585,7 +578,12 @@ a{% if loop.index != loop.length %},{% endif %}
 
     # TODO: create anchors for task on host
     playbook='''
+include::{{ env_rel_path | default('..') }}/.caradoc.env.adoc[]
+
 = PLAY: {{ play['name'] | default(play['name']) }}
+
+:toc:
+include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 
 {% if not all_mode | default(False) %}
 include::./charts.adoc[]
@@ -616,7 +614,7 @@ table tr td:first-child p a {
 {% set result_sorted=tasks[i]['results'] | dictsort %}
 {% for host, result in result_sorted %}
 {% if all_mode or ( (result.status | default('running') != 'ok') and (result.status | default('running') != 'skipped') ) %}
-| link:++{{ './' + tasks[i].filename + '/' + host + '.adoc' }}++[{{ task_status_label(result.status | default('running')) }}]
+| link:++{{ './' + tasks[i].filename + '/' + 'README.adoc' }}++[{{ task_status_label(result.status | default('running')) }}]
 | {{ host }}
 | link:++{{ './' + tasks[i].filename + '/' + 'README.adoc' }}++[++{{ tasks[i].task_name | default('no_name') | replace("|","\|") }}++]
 | {{ tasks[i].action }}
@@ -662,12 +660,15 @@ ifdef::env-vscode[]
 :source-file-scheme: vscode://file
 :source-highlighter: highlight.js
 endif::[]
-
 ifeval::["{caradoc-theme}" != "dark"]
 :caradoc_label_color: black
 endif::[]
 ifeval::["{caradoc-theme}" == "dark"]
 :caradoc_label_color: white
+endif::[]
+'''
+    css='''
+ifeval::["{caradoc-theme}" == "dark"]
 +++ <style> a, a:hover { color: #8cb4ff } a:hover {text-decoration: none} </style>+++
 +++ <style> code { background: transparent !important; color: white !important }  .hljs-keyword,.hljs-link,.hljs-literal,.hljs-name,.hljs-symbol{color:#569cd6}.hljs-addition,.hljs-deletion{display:inline-block;width:100%}.hljs-link{text-decoration:underline}.hljs-built_in,.hljs-type{color:#4ec9b0}.hljs-class,.hljs-number{color:#b8d7a3}.hljs-meta-string,.hljs-string{color:#d69d85}.hljs-regexp,.hljs-template-tag{color:#9a5334}.hljs-formula,.hljs-function,.hljs-params,.hljs-subst,.hljs-title{color:#dcdcdc}.hljs-comment,.hljs-quote{color:#57a64a;font-style:italic}.hljs-doctag{color:#608b4e}.hljs-meta,.hljs-meta-keyword,.hljs-tag{color:#9b9b9b}.hljs-template-variable,.hljs-variable{color:#bd63c5}.hljs-attr,.hljs-attribute,.hljs-builtin-name{color:#9cdcfe}.hljs-section{color:gold}.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}.hljs-bullet,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-selector-pseudo,.hljs-selector-tag{color:#d7ba7d}.hljs-addition{background-color:var(--vscode-diffEditor-insertedTextBackground,rgba(155,185,85,.2));color:#9bb955}.hljs-deletion{background:var(--vscode-diffEditor-removedTextBackground,rgba(255,0,0,.2));color:red} </style> +++
 endif::[]
