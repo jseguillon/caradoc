@@ -634,6 +634,16 @@ include::{{ env_rel_path | default('..') }}/.caradoc.env.adoc[]
 
 include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 
+
+{% if include_charts | default(False) %}
+:chart-width: 30%
+:hide-run-link: yes
+
+include::./charts.adoc[]
+{% else %}
+link:./charts.adoc[view charts]
+{% endif %}
+
 [.text-center]
 *Last 20 tasks (not skipped)*
 [%header,cols="50,70,5,5,5,5,5"]
@@ -652,6 +662,129 @@ include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 | {{ x.all_results.skipped | string if x.all_results.skipped > 0 else '' }}
 {% endfor %}
 |====
+'''
+    # FIXME: refactor with two macros: make sums and dump vegalite with color theme configurable
+    run_charts='''
+include::{{ env_rel_path | default('..') }}/.caradoc.env.adoc[]
+
+{% set play_results_sum = [] %}
+{% for play in play_results.plays | default({}) %}
+{% set curr_play = play_results.plays[play] %}
+{% set curr_all_results = play_results.plays[play].host_results.all %}
+{% set curr_all_count = curr_all_results.ok + curr_all_results.changed + curr_all_results.failed + curr_all_results.ignored_failed %}
+{% set play_results_sum = play_results_sum.append({'play': curr_play.name, 'value': curr_all_count}) %}
+{% endfor %}
+
+
+{% set host_results = [] %}
+{% for play_result in play_results.plays | default({}) %}
+{% set filtered_results = play_results.plays[play_result]['host_results'] |
+             dict2items|
+             rejectattr('key', 'search', 'all')|
+             items2dict %}
+
+
+{% for host in filtered_results %}
+{% set curr_all_results = filtered_results[host] %}
+{% set curr_all_count = curr_all_results.ok + curr_all_results.changed + curr_all_results.failed + curr_all_results.ignored_failed %}
+{% set host_results = host_results.append({'host': host, 'value': curr_all_count})  %}
+
+
+{% endfor %}
+{% endfor %}
+
+[.text-center]
+ifndef::hide-run-link[]
+(link:./README.adoc[back to run])
+endif::[]
+
+ifdef::chart-width[]
+[cols="a,a"]
+endif::[]
+ifndef::chart-width[]
+:chart-width: 50%
+[cols="a"]
+endif::[]
+|=====
+|
+[.text-center]
+*Results per play* (excluding skipped)
+ifdef::hide-run-link[]
+link:./charts.adoc[🔍]
+endif::[]
+[.text-center]
+[vegalite,format="svg",subs="attributes",width={chart-width}]
+....
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "background": null,
+  "data": {
+    "values": {{ play_results_sum | to_json}}
+  },
+  "transform": [
+    {
+      "filter": "datum.value > 0"
+    }],
+  "encoding": {
+    "theta": {"field": "value", "type": "quantitative", "stack": true},
+    "color": {
+      "scale": {"scheme": "accent"},
+      "field": "play",
+      "type": "nominal",
+      "legend": {"labelColor": "{caradoc_label_color}", "titleColor": "{caradoc_label_color}", "titleFontSize": 14, "labelFontSize": 12}
+    }
+  },
+  "layer": [
+    {"mark": {"type": "arc", "innerRadius":30, "outerRadius": 70}},
+    {
+      "mark": {"type": "text", "radius": 95, "fontSize":22},
+      "encoding": {"text": {"field": "value", "type": "quantitative"}}
+    }
+  ]
+}
+....
+
+
+|
+[.text-center]
+*Results per host* (excluding skipped)
+ifdef::hide-run-link[]
+link:./charts.adoc[🔍]
+endif::[]
+[.text-center]
+[vegalite,format="svg",subs="attributes",width={chart-width}]
+....
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "background": null,
+  "data": {
+    "values": {{ host_results | default([]) | to_json}}
+  },
+  "transform": [
+    {
+      "filter": "datum.value > 0"
+    }],
+  "encoding": {
+
+    "theta": {"field": "value", "type": "quantitative", "stack": true},
+    "color": {
+      "scale": {"scheme": "category20c"},
+      "field": "host",
+      "type": "nominal",
+      "legend": {"labelColor": "{caradoc_label_color}", "titleColor": "{caradoc_label_color}", "titleFontSize": 14, "labelFontSize": 12}
+    }
+  },
+  "layer": [
+    {"mark": {"type": "arc", "innerRadius":30, "outerRadius": 70}},
+    {
+      "mark": {"type": "text", "radius": 95, "fontSize":22},
+      "encoding": {"text": {"field": "value", "type": "quantitative"}}
+    }
+  ]
+}
+....
+|=====
+
 '''
 
     # Mainlys tricks for kroki and vscode
