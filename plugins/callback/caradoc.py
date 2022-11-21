@@ -369,6 +369,7 @@ class CallbackModule(CallbackBase):
         json_run={ "play_results": self.play_results, "tasks": self.tasks, "latest_tasks": self.latest_tasks, "run_date":self.run_date}
 
         self._template_and_save("./", "README.adoc", CaradocTemplates.run, json_run, cache_name="run")
+        self._template_and_save("./", "charts.adoc", CaradocTemplates.run_charts, json_run, cache_name="run_charts")
 
     def _save_as_file(self,path,name,content):
         path = os.path.join(self.log_folder, path)
@@ -627,7 +628,11 @@ table tr td:first-child p a {
 '''
 
     run='''
+include::{{ env_rel_path | default('..') }}/.caradoc.env.adoc[]
+
 = ⚡ | {{ run_date }}
+
+include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 
 [.text-center]
 *Last 20 tasks (not skipped)*
@@ -636,14 +641,14 @@ table tr td:first-child p a {
 [.emoji_table]
 |====
 | Play
-| Task | 🟡 | 🔴 | 🟣 | 🟢 | 🔵
+| Task | 🟢 | 🔴 | 🟡 | 🟣  | 🔵
 {% for x in latest_tasks|reverse %}
 | link:+++plays/{{ x.play_filename }}/README.adoc+++[{{ x.play_name }}]
 | link:+++plays/{{ x.play_filename }}/{{ x.task_filename }}/README.adoc+++[{{ x.task_name | default('no_name', True) |replace("|","\|") }}]
-| {{ x.all_results.changed | string if x.all_results.changed > 0 else '' }}
-| {{ x.all_results.failed | string if x.all_results.failed > 0 else '' }}
-| {{ x.all_results.ignored_failed | string if x.all_results.ignored_failed > 0 else '' }}
 | {{ x.all_results.ok | string if x.all_results.ok > 0 else '' }}
+| {{ x.all_results.failed | string if x.all_results.failed > 0 else '' }}
+| {{ x.all_results.changed | string if x.all_results.changed > 0 else '' }}
+| {{ x.all_results.ignored_failed | string if x.all_results.ignored_failed > 0 else '' }}
 | {{ x.all_results.skipped | string if x.all_results.skipped > 0 else '' }}
 {% endfor %}
 |====
