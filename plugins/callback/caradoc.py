@@ -163,7 +163,7 @@ class CallbackModule(CallbackBase):
             # TODO: ok to loose track of tasks but may should refer plays for global stats
             self.tasks=dict()
 
-        self.play_results["plays"][play._uuid] = { "host_results": {"all": self._host_result_struct.copy()}, "name": play_name }
+        self.play_results["plays"][play._uuid] = { "host_results": {"all": self._host_result_struct.copy()}, "name": play_name, "filename": play_filename }
         self.play = {"name": play_name, "filename": play_filename, "_uuid": play._uuid, "tasks": [], "attributes": play.hosts}
         return
 
@@ -635,32 +635,68 @@ include::{{ env_rel_path | default('..') }}/.caradoc.env.adoc[]
 include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 
 
-{% if include_charts | default(False) %}
-:chart-width: 30%
-:hide-run-link: yes
+{% set failed_list = [] %}
+{% set ok_list = [] %}
+{% set changed_list = [] %}
+{% set ignored_list = [] %}
+{% for play in play_results.plays | default({}) %}
+{% set play_all_results = play_results.plays[play].host_results.all %}
+{% set ok_list = ok_list.append(play_all_results.ok) %}
+{% set changed_list = changed_list.append(play_all_results.changed) %}
+{% set ignored_list = ignored_list.append(play_all_results.ignored_failed) %}
+{% set failed_list = failed_list.append(play_all_results.failed) %}
+{%endfor%}
 
-include::./charts.adoc[]
-{% else %}
-link:./charts.adoc[view charts]
-{% endif %}
+[cols="15a,35a,15a"]
+|====
+|
+📒 Plays : *{{ play_results.plays | list | length }}* (link:./charts.adoc[view charts])
 
+|
+[.text-center]
+🟢 Ok results: *{{ ok_list[0] }}* (including 🟡changed: {{ changed_list[0] }}, 🟣ignored  {{ ignored_list [0] }})
+
+|
+[.text-center]
+🔴 Failed results: *{{ failed_list[0] }}* failed
+
+|
+|====
+
+[cols="35a,65a"]
+|====
+|
+[.text-center]
+*Plays (reversed by start time)*
+[%header,cols="100a,5,5"]
+!=====
+! Play ! 🟢 ! 🔴
+{% for play in play_results.plays | default({}) | reverse %}
+! link:+++plays/{{  play_results.plays[play].filename }}/README.adoc+++[{{  play_results.plays[play].name }}] ! {{ play_results.plays[play].host_results.all.ok }} ! {{ play_results.plays[play].host_results.all.failed }}
+{% endfor %}
+!=====
+
+|
 [.text-center]
 *Last 20 tasks (not skipped)*
 [%header,cols="50,70,5,5,5,5,5"]
 [.tasks_longest]
 [.emoji_table]
-|====
-| Play
-| Task | 🟢 | 🔴 | 🟡 | 🟣  | 🔵
+!=====
+! Play
+! Task ! 🟢 ! 🔴 ! 🟡 ! 🟣  ! 🔵
 {% for x in latest_tasks|reverse %}
-| link:+++plays/{{ x.play_filename }}/README.adoc+++[{{ x.play_name }}]
-| link:+++plays/{{ x.play_filename }}/{{ x.task_filename }}/README.adoc+++[{{ x.task_name | default('no_name', True) |replace("|","\|") }}]
-| {{ x.all_results.ok | string if x.all_results.ok > 0 else '' }}
-| {{ x.all_results.failed | string if x.all_results.failed > 0 else '' }}
-| {{ x.all_results.changed | string if x.all_results.changed > 0 else '' }}
-| {{ x.all_results.ignored_failed | string if x.all_results.ignored_failed > 0 else '' }}
-| {{ x.all_results.skipped | string if x.all_results.skipped > 0 else '' }}
+! link:+++plays/{{ x.play_filename }}/README.adoc+++[{{ x.play_name }}]
+! link:+++plays/{{ x.play_filename }}/{{ x.task_filename }}/README.adoc+++[{{ x.task_name | default('no_name', True) | replace("!","\!") }}]
+! {{ x.all_results.ok | string if x.all_results.ok > 0 else '' }}
+! {{ x.all_results.failed | string if x.all_results.failed > 0 else '' }}
+! {{ x.all_results.changed | string if x.all_results.changed > 0 else '' }}
+! {{ x.all_results.ignored_failed | string if x.all_results.ignored_failed > 0 else '' }}
+! {{ x.all_results.skipped | string if x.all_results.skipped > 0 else '' }}
 {% endfor %}
+!=====
+
+|
 |====
 '''
     # FIXME: refactor with two macros: make sums and dump vegalite with color theme configurable
