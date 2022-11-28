@@ -312,10 +312,13 @@ class CallbackModule(CallbackBase):
 
             if result._host.name not in self.play_results["plays"][self.play["_uuid"]]["host_results"]:
                 self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name] = self._host_result_struct.copy()
+                self.play_results["host_results"][result._host.name] = self._host_result_struct.copy()
             self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name][status] = self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name][status] + 1
 
             self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"][status] = self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"][status] + 1
             self.play_results["host_results"]["all"][status] = self.play_results["host_results"]["all"][status] + 1
+            self.play_results["host_results"][result._host.name][status] = self.play_results["host_results"][result._host.name][status] + 1
+
             if result._host.name not in task["results"]:
                 task["results"][result._host.name]={}
             task["results"][result._host.name]["status"] = status
@@ -334,6 +337,7 @@ class CallbackModule(CallbackBase):
                 self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name]["ok"] = self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name]["ok"] + 1
                 self.play_results["host_results"]["all"]["ok"] = self.play_results["host_results"]["all"]["ok"] + 1
                 self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"]["ok"] = self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"]["ok"] + 1
+                self.play_results["host_results"][result._host.name]["ok"] = self.play_results["host_results"][result._host.name]["ok"] + 1
 
         self._save_run()
 
@@ -458,8 +462,8 @@ class CaradocTemplates:
 {%- endif -%}
 {%- endmacro %}
 
-{%- macro get_vega_donut(host, hosts_results) -%}
-[vegalite,format="svg",subs="attributes"]
+{%- macro get_vega_donut(host, hosts_results,width) -%}
+[vegalite,format="svg",subs="attributes",width="{{ width }}"]
 ....
 {
   "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
@@ -543,14 +547,18 @@ include::{{ host }}.json[]
     #TODO: find a way to show total
     #TODO: could we throttle to avoid blinking effects
     playbook_charts='''
-[.text-center]
-{{ get_vega_donut("all", hosts_results) }}
+include::{{ env_rel_path | default('..') }}/.caradoc.env.adoc[]
+include::{{ env_rel_path | default('../..') }}/.caradoc.css.adoc[]
 
-.show hosts
-[%collapsible]
-====
+[.text-center]
+(link:./README.adoc[back to play])
+
+[.text-center]
+{{ get_vega_donut("all", hosts_results, "30%") }}
+
+
 {% set rows = hosts_results | list | length -1 %}
-{% set rows = 5 if rows >=5 else rows %}
+{% set rows = 4 if rows >=4 else rows %}
 [cols="
 {%- for i in range(rows) %}
 a{% if loop.index != loop.length %},{% endif %}
@@ -560,14 +568,13 @@ a{% if loop.index != loop.length %},{% endif %}
 {% for host in hosts_results | sort %}
 {% if host != "all" %}
 |
-{{ get_vega_donut(host, hosts_results) }}
+{{ get_vega_donut(host, hosts_results, "100%") }}
 {% endif %}
 {% endfor %}
-{%- for i in range(hosts_results | list | length % rows) %}
+{%- for i in range((hosts_results | list | length -1) % rows) %}
 |
 {% endfor %}
 |====
-====
 '''
 
     # TODO: create anchors for task on host
@@ -579,9 +586,23 @@ include::{{ env_rel_path | default('..') }}/.caradoc.env.adoc[]
 :toc:
 include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 
-{% if not all_mode | default(False) %}
-include::./charts.adoc[]
-{% endif %}
+== Summary
+[cols="10a, 35a,15a"]
+|====
+|
+[.text-center]
+🖥️ Hosts: {{ hosts_results | list | length -1 }} (link:./charts.adoc[view charts])
+|
+[.text-center]
+🟢 Ok results: *{{ hosts_results.all.ok }}* (including 🟡changed: {{ hosts_results.all.changed }}, 🟣ignored  {{ hosts_results.all.ignored_failed }})
+
+|
+[.text-center]
+🔴 Failed results: *{{ hosts_results.all.failed }}*
+
+|
+|====
+
 
 == Links
 {% if not all_mode | default(False) %}
@@ -631,7 +652,7 @@ include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 |====
 |
 [.text-center]
-📒 Plays : *{{ play_results.plays | list | length }}* (link:./charts.adoc[view charts])
+📒 Plays : *{{ play_results.plays | list | length }}* / 🖥️ Hosts: {{ play_results.host_results | list | length -1 }} (link:./charts.adoc[view charts])
 
 |
 [.text-center]
@@ -660,7 +681,7 @@ include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 
 |
 [.text-center]
-*Last 20 tasks (not skipped)*
+*Last 20 tasks*
 [%header,cols="50,70,5,5,5,5,5"]
 [.tasks_longest]
 [.emoji_table]
@@ -714,15 +735,13 @@ include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 {% endfor %}
 
 [.text-center]
-ifndef::hide-run-link[]
 (link:./README.adoc[back to run])
-endif::[]
 
 ifdef::chart-width[]
 [cols="a,a"]
 endif::[]
 ifndef::chart-width[]
-:chart-width: 50%
+:chart-width: 30%
 [cols="a"]
 endif::[]
 |=====
