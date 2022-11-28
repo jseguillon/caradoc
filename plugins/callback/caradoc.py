@@ -320,8 +320,6 @@ class CallbackModule(CallbackBase):
                 task["results"][result._host.name]={}
             task["results"][result._host.name]["status"] = status
 
-            task["results"][result._host.name]["result"] = wrap_var(result._result),
-
             self.task_end_count=self.task_end_count+1
 
             self._render_task_result_templates(result, task["task_name"], status)
