@@ -591,7 +591,7 @@ include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 |====
 |
 [.text-center]
-🖥️ Hosts: {{ hosts_results | list | length -1 }} (link:./charts.adoc[view charts])
+🖥️ Hosts: *{{ hosts_results | list | length -1 }}* (link:./charts.adoc[view charts])
 |
 [.text-center]
 🟢 Ok results: *{{ hosts_results.all.ok }}* (including 🟡changed: {{ hosts_results.all.changed }}, 🟣ignored  {{ hosts_results.all.ignored_failed }})
@@ -652,7 +652,7 @@ include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 |====
 |
 [.text-center]
-📒 Plays : *{{ play_results.plays | list | length }}* / 🖥️ Hosts: {{ play_results.host_results | list | length -1 }} (link:./charts.adoc[view charts])
+📒 Plays : *{{ play_results.plays | list | length }}* / 🖥️ Hosts: *{{ play_results.host_results | list | length -1 }}* (link:./charts.adoc[view charts])
 
 |
 [.text-center]
