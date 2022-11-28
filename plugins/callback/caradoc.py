@@ -786,7 +786,7 @@ endif::[]
     }],
   "encoding": {
 
-    "theta": {"field": "value", "type": "quantitative", "stack": true},
+    "theta": {"aggregate": "sum", "field": "value", "type": "quantitative", "stack": true},
     "color": {
       "scale": {"scheme": "category20c"},
       "field": "host",
@@ -798,7 +798,7 @@ endif::[]
     {"mark": {"type": "arc", "innerRadius":30, "outerRadius": 70}},
     {
       "mark": {"type": "text", "radius": 95, "fontSize":22},
-      "encoding": {"text": {"field": "value", "type": "quantitative"}}
+      "encoding": {"text": {"aggregate": "sum", "field": "value", "type": "quantitative"}}
     }
   ]
 }
