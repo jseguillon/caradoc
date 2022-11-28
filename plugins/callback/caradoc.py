@@ -591,14 +591,14 @@ include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 |====
 |
 [.text-center]
-🖥️ Hosts: *{{ hosts_results | list | length -1 }}* (link:./charts.adoc[view charts])
+🖥️ Hosts: *{{ (hosts_results | list | length -1) | string }}* (link:./charts.adoc[view charts])
 |
 [.text-center]
-🟢 Ok results: *{{ hosts_results.all.ok }}* (including 🟡changed: {{ hosts_results.all.changed }}, 🟣ignored  {{ hosts_results.all.ignored_failed }})
+🟢 Ok results: *{{ hosts_results.all.ok | string }}* (including 🟡changed: {{ hosts_results.all.changed | string }}, 🟣ignored  {{ hosts_results.all.ignored_failed | string }})
 
 |
 [.text-center]
-🔴 Failed results: *{{ hosts_results.all.failed }}*
+🔴 Failed results: *{{ hosts_results.all.failed | string }}*
 
 |
 |====
@@ -652,15 +652,15 @@ include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 |====
 |
 [.text-center]
-📒 Plays : *{{ play_results.plays | list | length }}* / 🖥️ Hosts: *{{ play_results.host_results | list | length -1 }}* (link:./charts.adoc[view charts])
+📒 Plays : *{{ play_results.plays | list | length | string }}* / 🖥️ Hosts: *{{ (play_results.host_results | list | length -1) | string }}* (link:./charts.adoc[view charts])
 
 |
 [.text-center]
-🟢 Ok results: *{{ play_results.host_results.all.ok }}* (including 🟡changed: {{ play_results.host_results.all.changed }}, 🟣ignored  {{ play_results.host_results.all.ignored_failed }})
+🟢 Ok results: *{{ play_results.host_results.all.ok | string }}* (including 🟡changed: {{ play_results.host_results.all.changed | string }}, 🟣ignored  {{ play_results.host_results.all.ignored_failed | string }})
 
 |
 [.text-center]
-🔴 Failed results: *{{ play_results.host_results.all.failed }}*
+🔴 Failed results: *{{ play_results.host_results.all.failed | string }}*
 
 |
 |====
@@ -675,7 +675,9 @@ include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 !=====
 ! Play ! 🟢 ! 🔴
 {% for play in play_results.plays | default({}) | reverse %}
-! link:+++plays/{{  play_results.plays[play].filename | replace('!', '\!') | replace('|', '\|') }}/README.adoc+++[{{  play_results.plays[play].name  | replace('!', '\!') | replace('|', '\|')  }}] ! {{ play_results.plays[play].host_results.all.ok }} ! {{ play_results.plays[play].host_results.all.failed }}
+! link:+++plays/{{  play_results.plays[play].filename | replace('!', '\!') | replace('|', '\|') }}/README.adoc+++[{{  play_results.plays[play].name  | replace('!', '\!') | replace('|', '\|')  }}]
+! {{ play_results.plays[play].host_results.all.ok | string }}
+! {{ play_results.plays[play].host_results.all.failed | string }}
 {% endfor %}
 !=====
 
