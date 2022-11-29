@@ -2,6 +2,55 @@
 # TODO: add free mode + random sleep
 # TODO: test delegated
 # Twice same name to test robustness
+
+- name: "ok=2 changed=1"
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: task 1
+      debug: msg="Hello 1"
+      changed_when: False
+      loop: [1, 2]
+
+    - name: task 2
+      debug: msg="Hello 2"
+      changed_when: True
+      loop: [1, 2]
+
+
+- name: "ok=1"
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - debug: msg="Hello 1"
+      when: "item !=2"
+      loop: [1, 2 ]
+
+
+- name: "ok=1 rescued=1 "
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - block:
+        - fail: msg="fail"
+      rescue:
+        - debug: msg="rescue"
+
+
+- name: "ok=3 changed=2 * 7"
+  hosts: all
+  tags: play_names
+  handlers:
+    - name: my handler
+      debug:
+        msg: "handler"
+      changed_when: true
+  tasks:
+    - name: Task debug with handler
+      debug: msg=a
+      changed_when: true
+      notify: my handler
+
 - name: Same playbook name
   hosts: all
   gather_facts: false

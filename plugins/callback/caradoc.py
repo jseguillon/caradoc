@@ -92,7 +92,7 @@ class CallbackModule(CallbackBase):
     CALLBACK_NAME = "caradoc_default"
 
     TIME_FORMAT = "%b %d %Y %H:%M:%S"
-    _host_result_struct = {"changed": 0, "ok": 0, "failed": 0, "skipped":0, "ignored_failed": 0}
+    _host_result_struct = {"changed": 0, "ok": 0, "failed": 0, "skipped":0, "ignored_failed": 0, "rescued": 0}
     # FIXME deal with nolog (https://github.com/ansible/ansible/blob/3515b3c5fcf011ba9bb63fe069520c7d528e3c54/lib/ansible/executor/task_result.py#L131)
     def __init__(self):
         super().__init__()
@@ -132,9 +132,7 @@ class CallbackModule(CallbackBase):
             with open(os.path.join(self.log_folder, ".caradoc.css.adoc"), "wb") as fd:
                 fd.write(to_bytes(CaradocTemplates.css))
 
-        # Create a per playbook directory
-        # FIXME: not good for git diff => prefer a upper directory then an id just like tasks
-        # FIXME: need more precesion
+        # Create run directory
         now = time.strftime("%Y%m%d-%H%M%S", time.localtime())
         self.log_folder = os.path.join(self.log_folder, now)
 
@@ -147,8 +145,10 @@ class CallbackModule(CallbackBase):
         self._playbook=playbook
         return
 
+    # FIXME: serial dont work: only last host play will be tracked => test uuid and act
     def v2_playbook_on_play_start(self, play):
         self.log.debug("v2_playbook_on_play_start")
+        # TODO: make a separate func for new_name
         play_filename=re.sub(r"[^0-9a-zA-Z_\-.]", "_", play.name)
         play_name=play.name
         if play.name in self.play_names_count:
@@ -174,24 +174,14 @@ class CallbackModule(CallbackBase):
 
     def v2_playbook_on_task_start(self, task, is_conditional, handler=False):
         # TODO: for task duration, see example on https://github.com/alikins/ansible/blob/devel/lib/ansible/plugins/callback/profile_tasks.py
-        name=self._get_new_task_name(task)
-        self.play["tasks"].append(str(task._uuid))
-        self.tasks[task._uuid] = {
-            "task_name": wrap_var(task.get_name()),
-            "base_path": f"plays/{self.play['filename']}/{name}",
-            "filename": name,
-            "start_time": str(time.time()),
-            "tags": task.tags,
-            "action": task.action,
-            "path": task.get_path(),
-            "results": {},
-        }
-        self._save_play()
+        has_rescue = False
+        # FIXME: if rescue does fail, then the task is tracked as rescued.
+        # => should check if current task is in the rescue or the block in parent definition
+        if task._parent is not None and hasattr(task._parent, "_ds") and "rescue" in task._parent._ds:
+            has_rescue = True
 
-        new_task_latest = {"task_uuid": task._uuid, "task_name": wrap_var(task.get_name()), "play_name": self.play["name"], "play_filename": self.play["filename"],
-                                "all_results": self._host_result_struct.copy(), "task_filename": name}
-        self.latest_tasks[task._uuid]=new_task_latest
-        self.latest_tasks=dict(list(self.latest_tasks.items())[-20:])
+        self._create_new_task_or_handler(task, has_rescue)
+        self._save_play()
         self._save_run()
 
         return
@@ -254,6 +244,34 @@ class CallbackModule(CallbackBase):
         # from Ara: result._task.delegate_to can end up being a variable from this hook, don't save it.
         # https://github.com/ansible/ansible/issues/75339
 
+    def _create_new_task_or_handler(self, task_or_handler, has_rescue = False):
+        name=self._get_new_task_name(task_or_handler)
+        if task_or_handler._uuid not in self.tasks:
+            self.play["tasks"].append(str(task_or_handler._uuid))
+            self.tasks[task_or_handler._uuid] = {
+                "task_name": wrap_var(task_or_handler.get_name()),
+                "base_path": f"plays/{self.play['filename']}/{name}",
+                "filename": name,
+                "start_time": str(time.time()),
+                "tags": task_or_handler.tags,
+                "action": task_or_handler.action,
+                "path": task_or_handler.get_path(),
+                "results": {},
+                "has_rescue": has_rescue
+            }
+
+            new_task_latest = {"task_uuid": task_or_handler._uuid, "task_name": wrap_var(task_or_handler.get_name()), "play_name": self.play["name"], "play_filename": self.play["filename"],
+                                    "all_results": self._host_result_struct.copy(), "task_filename": name}
+            self.latest_tasks[task_or_handler._uuid]=new_task_latest
+            self.latest_tasks=dict(list(self.latest_tasks.items())[-20:])
+
+    def v2_playbook_on_notify(self, handler, host):
+        self._create_new_task_or_handler(handler)
+        self._save_play()
+        self._save_run()
+
+        self.playbook_on_notify(host, handler)
+
     def v2_on_file_diff(self, result):
         current_task = self.tasks[result._task._uuid]
         ansi_escape3 = re.compile(r'(\x9B|\x1B\[)[0-?]*[ -/]*[@-~]', flags=re.IGNORECASE)
@@ -288,7 +306,7 @@ class CallbackModule(CallbackBase):
 
     # For a task name, will render base template
     # TODO: split args as separate file since its the same for all results
-    def _render_task_result_templates(self,result, task_name, status):
+    def _save_result(self,result, task_name, status):
         # TODO: a serializer may be better than this json tricky construction
         # Also in final design may not need all of this an rely or links:[] (for host as an example)
         results = strip_internal_keys(module_response_deepcopy(result._result))
@@ -303,41 +321,47 @@ class CallbackModule(CallbackBase):
         result=self._template(self._playbook.get_loader(), template, tpl_vars, cache_name)
         self._save_as_file(path, name, result)
 
-    # FIXME: deal with handlers
-    def _save_task(self, result, status="ok"):
-        # Get back name assigned to task uuid for consistent file naming
-        # TODO: to deal with handler: create new task here => some refactor is needed
+    def _increment_status_all(self, result, status, task_in_latest):
+        self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name][status] = self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name][status] + 1
+
+        self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"][status] = self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"][status] + 1
+        self.play_results["host_results"]["all"][status] = self.play_results["host_results"]["all"][status] + 1
+        self.play_results["host_results"][result._host.name][status] = self.play_results["host_results"][result._host.name][status] + 1
+        task_in_latest["all_results"][status] = task_in_latest["all_results"][status] + 1
+
+    def _count_results(self, result, status, task):
+        if status == "failed" and task["has_rescue"]:
+            status = "rescued"
+
         if result._task._uuid in self.tasks:
-            task=self.tasks[result._task._uuid]
-
-            if result._host.name not in self.play_results["plays"][self.play["_uuid"]]["host_results"]:
-                self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name] = self._host_result_struct.copy()
-                self.play_results["host_results"][result._host.name] = self._host_result_struct.copy()
-            self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name][status] = self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name][status] + 1
-
-            self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"][status] = self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"][status] + 1
-            self.play_results["host_results"]["all"][status] = self.play_results["host_results"]["all"][status] + 1
-            self.play_results["host_results"][result._host.name][status] = self.play_results["host_results"][result._host.name][status] + 1
-
             if result._host.name not in task["results"]:
                 task["results"][result._host.name]={}
             task["results"][result._host.name]["status"] = status
 
+            if result._host.name not in self.play_results["plays"][self.play["_uuid"]]["host_results"]:
+                self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name] = self._host_result_struct.copy()
+                self.play_results["host_results"][result._host.name] = self._host_result_struct.copy()
+
             self.task_end_count=self.task_end_count+1
 
-            self._render_task_result_templates(result, task["task_name"], status)
-            self._save_task_readme(task)
-
             task_in_latest = self.latest_tasks[result._task._uuid]
+            self._increment_status_all(result, status, task_in_latest)
 
-            task_in_latest["all_results"][status] = task_in_latest["all_results"][status] + 1
-
+            # an ignored but containaing a change => increment change also
+            if(status=="ignored_failed" and "results" in result._result and any(r['changed'] == True for r in result._result["results"])):
+                self._increment_status_all(result, "changed", task_in_latest)
             # a changed or ignored result also counts as ok
             if (status=="changed" or status=="ignored_failed"):
-                self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name]["ok"] = self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name]["ok"] + 1
-                self.play_results["host_results"]["all"]["ok"] = self.play_results["host_results"]["all"]["ok"] + 1
-                self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"]["ok"] = self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"]["ok"] + 1
-                self.play_results["host_results"][result._host.name]["ok"] = self.play_results["host_results"][result._host.name]["ok"] + 1
+                self._increment_status_all(result, "ok", task_in_latest)
+
+    def _save_task(self, result, status="ok"):
+        if result._task._uuid in self.tasks:
+            task=self.tasks[result._task._uuid]
+
+            self._count_results(result, status, task)
+
+            self._save_result(result, task["task_name"], status)
+            self._save_task_readme(task)
 
         self._save_run()
 
@@ -459,6 +483,7 @@ class CaradocTemplates:
 {%- elif status == "skipped" -%}🔵
 {%- elif status == "unreachable" -%}💀
 {%- elif status == "running" -%}⚡
+{%- elif status == "rescued" -%}♻️
 {%- endif -%}
 {%- endmacro %}
 
@@ -587,18 +612,21 @@ include::{{ env_rel_path | default('..') }}/.caradoc.env.adoc[]
 include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 
 == Summary
-[cols="10a, 35a,15a"]
+[cols="10a, 35a,15a,15a"]
 |====
 |
 [.text-center]
 🖥️ Hosts: *{{ (hosts_results | list | length -1) | string }}* (link:./charts.adoc[view charts])
 |
 [.text-center]
-🟢 Ok results: *{{ hosts_results.all.ok | string }}* (including 🟡changed: {{ hosts_results.all.changed | string }}, 🟣ignored  {{ hosts_results.all.ignored_failed | string }})
+🟢 ok: *{{ hosts_results.all.ok | string }}* (inc. 🟡changed: {{ hosts_results.all.changed | string }}, 🟣ignored: {{ hosts_results.all.ignored_failed | string }})
+|
+[.text-center]
+♻️rescued: {{ hosts_results.all.rescued | string }}
 
 |
 [.text-center]
-🔴 Failed results: *{{ hosts_results.all.failed | string }}*
+🔴 failed *{{ hosts_results.all.failed | string }}*
 
 |
 |====
@@ -641,6 +669,7 @@ table tr td:first-child p a {
 
 '''
 
+    # TODO: create macro for tasks "ok (inc. x x x x)" and share with playbook template
     run='''
 include::{{ env_rel_path | default('..') }}/.caradoc.env.adoc[]
 
@@ -648,7 +677,7 @@ include::{{ env_rel_path | default('..') }}/.caradoc.env.adoc[]
 
 include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 
-[cols="15a,35a,15a"]
+[cols="15a,35a,15a,15a"]
 |====
 |
 [.text-center]
@@ -656,11 +685,15 @@ include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 
 |
 [.text-center]
-🟢 Ok results: *{{ play_results.host_results.all.ok | string }}* (including 🟡changed: {{ play_results.host_results.all.changed | string }}, 🟣ignored  {{ play_results.host_results.all.ignored_failed | string }})
+🟢 ok: *{{ play_results.host_results.all.ok | string }}* (inc. 🟡changed: {{ play_results.host_results.all.changed | string }}, 🟣ignored: {{ play_results.host_results.all.ignored_failed | string }})
 
 |
 [.text-center]
-🔴 Failed results: *{{ play_results.host_results.all.failed | string }}*
+♻️rescued:{{ play_results.host_results.all.rescued | string }}
+
+|
+[.text-center]
+🔴 failed: *{{ play_results.host_results.all.failed | string }}*
 
 |
 |====
@@ -684,12 +717,12 @@ include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 |
 [.text-center]
 *Last 20 tasks*
-[%header,cols="50,70,5,5,5,5,5"]
+[%header,cols="50,70,5,5,5,5,5,5"]
 [.tasks_longest]
 [.emoji_table]
 !=====
 ! Play
-! Task ! 🟢 ! 🔴 ! 🟡 ! 🟣  ! 🔵
+! Task ! 🟢 ! 🔴 ! 🟡 ! 🟣  ! 🔵 ! ♻️
 {% for task in latest_tasks|reverse %}
 {% set x = latest_tasks[task] %}
 ! link:+++plays/{{ x.play_filename  | replace('!', '\!') | replace('|', '\|') }}/README.adoc+++[{{ x.play_name | replace('!', '\!') | replace('|', '\|') }}]
@@ -699,6 +732,7 @@ include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 ! {{ x.all_results.changed | string if x.all_results.changed > 0 else '' }}
 ! {{ x.all_results.ignored_failed | string if x.all_results.ignored_failed > 0 else '' }}
 ! {{ x.all_results.skipped | string if x.all_results.skipped > 0 else '' }}
+! {{ x.all_results.rescued | string if x.all_results.rescued > 0 else '' }}
 {% endfor %}
 !=====
 
