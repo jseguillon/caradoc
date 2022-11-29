@@ -4,48 +4,27 @@
 from __future__ import absolute_import, division, print_function
 
 # FIXME: some clean to be done on imports - need tox and lint
-import datetime
-import getpass
 import json
 import logging
 import os
-import sys
-import socket
-from concurrent.futures import ThreadPoolExecutor
+import re
+import time
 
-from ansible import __version__ as ansible_version, constants as C
+from ansible.module_utils._text import to_bytes, to_native, to_text
 from ansible.parsing.ajson import AnsibleJSONEncoder
 from ansible.plugins.callback import CallbackBase
+from ansible.template import Templar
+from ansible.template.vars import AnsibleJ2Vars
+from ansible.utils.display import Display
+from ansible.utils.path import makedirs_safe
+from ansible.utils.unsafe_proxy import wrap_var
 from ansible.vars.clean import module_response_deepcopy, strip_internal_keys
+from jinja2.exceptions import TemplateSyntaxError, UndefinedError
+from jinja2.utils import concat as j2_concat
+
 # Ansible CLI options are now in ansible.context in >= 2.8
 # https://github.com/ansible/ansible/commit/afdbb0d9d5bebb91f632f0d4a1364de5393ba17a
 
-from ansible.template import Templar, AnsibleEnvironment
-from ansible.template.vars import AnsibleJ2Vars
-from ansible.playbook.loop_control import LoopControl
-from jinja2.utils import concat as j2_concat
-from jinja2.exceptions import TemplateSyntaxError, UndefinedError
-from ansible.module_utils._text import to_native, to_text, to_bytes
-
-from ansible.errors import (
-    AnsibleAssertionError,
-    AnsibleError,
-    AnsibleFilterError,
-    AnsibleLookupError,
-    AnsibleOptionsError,
-    AnsiblePluginRemovedError,
-    AnsibleUndefinedVariable,
-)
-from ansible.utils.display import Display
-
-from ansible.utils.path import makedirs_safe
-from ansible.module_utils.common.text.converters import to_bytes
-from ansible.utils.unsafe_proxy import wrap_var
-import re
-from json import JSONEncoder
-import time
-import difflib
-from ansible.module_utils.common._collections_compat import MutableMapping
 
 DOCUMENTATION = """
 callback: caradoc
@@ -80,7 +59,8 @@ ANSIBLE_SETUP_MODULES = frozenset(
 )
 
 # Cache for templates bytecode, used by CaradocTemplar
-CARADOC_CACHE= {}
+CARADOC_CACHE = {}
+
 
 class CallbackModule(CallbackBase):
     """
@@ -92,7 +72,14 @@ class CallbackModule(CallbackBase):
     CALLBACK_NAME = "caradoc_default"
 
     TIME_FORMAT = "%b %d %Y %H:%M:%S"
-    _host_result_struct = {"changed": 0, "ok": 0, "failed": 0, "skipped":0, "ignored_failed": 0, "rescued": 0}
+    _host_result_struct = {
+        "changed": 0,
+        "ok": 0,
+        "failed": 0,
+        "skipped": 0,
+        "ignored_failed": 0,
+        "rescued": 0,
+    }
     # FIXME deal with nolog (https://github.com/ansible/ansible/blob/3515b3c5fcf011ba9bb63fe069520c7d528e3c54/lib/ansible/executor/task_result.py#L131)
     def __init__(self):
         super().__init__()
@@ -100,20 +87,23 @@ class CallbackModule(CallbackBase):
         self.tasks = dict()
 
         # host results tracked for all plays
-        self.play_results = { "plays": {}, "host_results": {"all": self._host_result_struct.copy() } }
+        self.play_results = {
+            "plays": {},
+            "host_results": {"all": self._host_result_struct.copy()},
+        }
 
         # detailed latest results
         self.latest_tasks = {}
 
         # Current playbook running
-        self.play=None
+        self.play = None
 
         # Track filenames of plays and count to avoid duplicated
-        self.tasks_names_count= dict()
+        self.tasks_names_count = dict()
         self.play_names_count = dict()
 
         # global task count
-        self.task_end_count=0
+        self.task_end_count = 0
         self.log = logging.getLogger("caradoc.plugins.callback.default")
 
     def set_options(self, task_keys=None, var_options=None, direct=None):
@@ -142,15 +132,15 @@ class CallbackModule(CallbackBase):
 
         self.log.debug("v2_playbook_on_start")
 
-        self._playbook=playbook
+        self._playbook = playbook
         return
 
     # FIXME: serial dont work: only last host play will be tracked => test uuid and act
     def v2_playbook_on_play_start(self, play):
         self.log.debug("v2_playbook_on_play_start")
         # TODO: make a separate func for new_name
-        play_filename=re.sub(r"[^0-9a-zA-Z_\-.]", "_", play.name)
-        play_name=play.name
+        play_filename = re.sub(r"[^0-9a-zA-Z_\-.]", "_", play.name)
+        play_name = play.name
         if play.name in self.play_names_count:
             self.play_names_count[play.name] = self.play_names_count[play.name] + 1
             play_filename = f"{play_name}-{str(self.play_names_count[play.name])}"
@@ -158,13 +148,23 @@ class CallbackModule(CallbackBase):
         else:
             self.play_names_count[play.name] = 1
 
-        if  self.play is not None:
+        if self.play is not None:
             self._save_play()
             # TODO: ok to loose track of tasks but may should refer plays for global stats
-            self.tasks=dict()
+            self.tasks = dict()
 
-        self.play_results["plays"][play._uuid] = { "host_results": {"all": self._host_result_struct.copy()}, "name": play_name, "filename": play_filename }
-        self.play = {"name": play_name, "filename": play_filename, "_uuid": play._uuid, "tasks": [], "attributes": play.hosts}
+        self.play_results["plays"][play._uuid] = {
+            "host_results": {"all": self._host_result_struct.copy()},
+            "name": play_name,
+            "filename": play_filename,
+        }
+        self.play = {
+            "name": play_name,
+            "filename": play_filename,
+            "_uuid": play._uuid,
+            "tasks": [],
+            "attributes": play.hosts,
+        }
         return
 
     def v2_playbook_on_handler_task_start(self, task):
@@ -176,8 +176,12 @@ class CallbackModule(CallbackBase):
         # TODO: for task duration, see example on https://github.com/alikins/ansible/blob/devel/lib/ansible/plugins/callback/profile_tasks.py
         has_rescue = False
         # FIXME: if rescue does fail, then the task is tracked as rescued.
-        # => should check if current task is in the rescue or the block in parent definition
-        if task._parent is not None and hasattr(task._parent, "_ds") and "rescue" in task._parent._ds:
+        #  => should check if current task is in the rescue or the block in parent definition
+        if (
+            task._parent is not None
+            and hasattr(task._parent, "_ds")
+            and "rescue" in task._parent._ds
+        ):
             has_rescue = True
 
         self._create_new_task_or_handler(task, has_rescue)
@@ -188,17 +192,17 @@ class CallbackModule(CallbackBase):
 
     # Check if couple of task name already referenced and managed a counter
     def _get_new_task_name(self, task):
-        name=task.get_name()
+        name = task.get_name()
         # TODO: track resolved action
-        action=task.action
-        name="no_name" if name == "" else name
-        name=name+"-"+action
+        action = task.action
+        name = "no_name" if name == "" else name
+        name = name + "-" + action
 
-        name=re.sub(r"[^0-9a-zA-Z_\-.]", "_", name)
-
+        name = re.sub(r"[^0-9a-zA-Z_\-.]", "_", name)
+        # temp
         if name in self.tasks_names_count:
             self.tasks_names_count[name] = self.tasks_names_count[name] + 1
-            name=f"{name}-{str(self.tasks_names_count[name])}"
+            name = f"{name}-{str(self.tasks_names_count[name])}"
         else:
             self.tasks_names_count[name] = 1
         return name
@@ -223,7 +227,7 @@ class CallbackModule(CallbackBase):
     def v2_runner_on_failed(self, result, **kwargs):
         self.log.debug("v2_runner_on_failed")
 
-        if kwargs.get('ignore_errors', False):
+        if kwargs.get("ignore_errors", False):
             self._save_task(result, "ignored_failed")
         else:
             self._save_task(result, "failed")
@@ -244,8 +248,8 @@ class CallbackModule(CallbackBase):
         # from Ara: result._task.delegate_to can end up being a variable from this hook, don't save it.
         # https://github.com/ansible/ansible/issues/75339
 
-    def _create_new_task_or_handler(self, task_or_handler, has_rescue = False):
-        name=self._get_new_task_name(task_or_handler)
+    def _create_new_task_or_handler(self, task_or_handler, has_rescue=False):
+        name = self._get_new_task_name(task_or_handler)
         if task_or_handler._uuid not in self.tasks:
             self.play["tasks"].append(str(task_or_handler._uuid))
             self.tasks[task_or_handler._uuid] = {
@@ -257,13 +261,19 @@ class CallbackModule(CallbackBase):
                 "action": task_or_handler.action,
                 "path": task_or_handler.get_path(),
                 "results": {},
-                "has_rescue": has_rescue
+                "has_rescue": has_rescue,
             }
 
-            new_task_latest = {"task_uuid": task_or_handler._uuid, "task_name": wrap_var(task_or_handler.get_name()), "play_name": self.play["name"], "play_filename": self.play["filename"],
-                                    "all_results": self._host_result_struct.copy(), "task_filename": name}
-            self.latest_tasks[task_or_handler._uuid]=new_task_latest
-            self.latest_tasks=dict(list(self.latest_tasks.items())[-20:])
+            new_task_latest = {
+                "task_uuid": task_or_handler._uuid,
+                "task_name": wrap_var(task_or_handler.get_name()),
+                "play_name": self.play["name"],
+                "play_filename": self.play["filename"],
+                "all_results": self._host_result_struct.copy(),
+                "task_filename": name,
+            }
+            self.latest_tasks[task_or_handler._uuid] = new_task_latest
+            self.latest_tasks = dict(list(self.latest_tasks.items())[-20:])
 
     def v2_playbook_on_notify(self, handler, host):
         self._create_new_task_or_handler(handler)
@@ -274,24 +284,29 @@ class CallbackModule(CallbackBase):
 
     def v2_on_file_diff(self, result):
         current_task = self.tasks[result._task._uuid]
-        ansi_escape3 = re.compile(r'(\x9B|\x1B\[)[0-?]*[ -/]*[@-~]', flags=re.IGNORECASE)
+        ansi_escape3 = re.compile(
+            r"(\x9B|\x1B\[)[0-?]*[ -/]*[@-~]", flags=re.IGNORECASE
+        )
 
         if result._host.name not in current_task["results"]:
-            current_task["results"][result._host.name]={}
+            current_task["results"][result._host.name] = {}
 
-        if result._task.loop and 'results' in result._result:
-            for res in result._result['results']:
-                if 'diff' in res and res['diff'] and res.get('changed', False):
-                    diff = self._get_diff(res['diff'])
+        if result._task.loop and "results" in result._result:
+            for res in result._result["results"]:
+                if "diff" in res and res["diff"] and res.get("changed", False):
+                    diff = self._get_diff(res["diff"])
                     if diff:
-                        diff = ansi_escape3.sub('', diff)
-                        current_task["results"][result._host.name]["diff"]=diff
-        elif 'diff' in result._result and result._result['diff'] and result._result.get('changed', False):
-            diff = self._get_diff(result._result['diff'])
+                        diff = ansi_escape3.sub("", diff)
+                        current_task["results"][result._host.name]["diff"] = diff
+        elif (
+            "diff" in result._result
+            and result._result["diff"]
+            and result._result.get("changed", False)
+        ):
+            diff = self._get_diff(result._result["diff"])
             if diff:
-                diff = ansi_escape3.sub('', diff)
-                current_task["results"][result._host.name]["diff"]=wrap_var(diff)
-
+                diff = ansi_escape3.sub("", diff)
+                current_task["results"][result._host.name]["diff"] = wrap_var(diff)
 
     # TODO: track this event ?
     def v2_playbook_on_include(self, included_file):
@@ -302,32 +317,63 @@ class CallbackModule(CallbackBase):
         self.log.debug("v2_playbook_on_stats")
         self._save_play()
         self._save_run()
+
     # TODO: may need some implementation of v2_runner_on_async_XXX also (ara does not implement anything)
 
     # For a task name, will render base template
     # TODO: split args as separate file since its the same for all results
-    def _save_result(self,result, task_name, status):
+    def _save_result(self, result, task_name, status):
         # TODO: a serializer may be better than this json tricky construction
         # Also in final design may not need all of this an rely or links:[] (for host as an example)
         results = strip_internal_keys(module_response_deepcopy(result._result))
         current_task = self.tasks[result._task._uuid]
         internal_result = current_task["results"][result._host.name]
-        jsonified = json.dumps(results, cls=AnsibleJSONEncoder, ensure_ascii=False, sort_keys=False)
+        jsonified = json.dumps(
+            results, cls=AnsibleJSONEncoder, ensure_ascii=False, sort_keys=False
+        )
 
-        json_result = { "result": wrap_var(results) }
-        self._template_and_save(current_task["base_path"], result._host.name + ".json", CaradocTemplates.result,json_result, cache_name="result")
+        json_result = {"result": wrap_var(results)}
+        self._template_and_save(
+            current_task["base_path"],
+            result._host.name + ".json",
+            CaradocTemplates.result,
+            json_result,
+            cache_name="result",
+        )
 
     def _template_and_save(self, path, name, template, tpl_vars, cache_name=None):
-        result=self._template(self._playbook.get_loader(), template, tpl_vars, cache_name)
+        result = self._template(
+            self._playbook.get_loader(), template, tpl_vars, cache_name
+        )
         self._save_as_file(path, name, result)
 
     def _increment_status_all(self, result, status, task_in_latest):
-        self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name][status] = self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name][status] + 1
+        self.play_results["plays"][self.play["_uuid"]]["host_results"][
+            result._host.name
+        ][status] = (
+            self.play_results["plays"][self.play["_uuid"]]["host_results"][
+                result._host.name
+            ][status]
+            + 1
+        )
 
-        self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"][status] = self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"][status] + 1
-        self.play_results["host_results"]["all"][status] = self.play_results["host_results"]["all"][status] + 1
-        self.play_results["host_results"][result._host.name][status] = self.play_results["host_results"][result._host.name][status] + 1
-        task_in_latest["all_results"][status] = task_in_latest["all_results"][status] + 1
+        self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"][
+            status
+        ] = (
+            self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"][
+                status
+            ]
+            + 1
+        )
+        self.play_results["host_results"]["all"][status] = (
+            self.play_results["host_results"]["all"][status] + 1
+        )
+        self.play_results["host_results"][result._host.name][status] = (
+            self.play_results["host_results"][result._host.name][status] + 1
+        )
+        task_in_latest["all_results"][status] = (
+            task_in_latest["all_results"][status] + 1
+        )
 
     def _count_results(self, result, status, task):
         if status == "failed" and task["has_rescue"]:
@@ -335,28 +381,39 @@ class CallbackModule(CallbackBase):
 
         if result._task._uuid in self.tasks:
             if result._host.name not in task["results"]:
-                task["results"][result._host.name]={}
+                task["results"][result._host.name] = {}
             task["results"][result._host.name]["status"] = status
 
-            if result._host.name not in self.play_results["plays"][self.play["_uuid"]]["host_results"]:
-                self.play_results["plays"][self.play["_uuid"]]["host_results"][result._host.name] = self._host_result_struct.copy()
-                self.play_results["host_results"][result._host.name] = self._host_result_struct.copy()
+            if (
+                result._host.name
+                not in self.play_results["plays"][self.play["_uuid"]]["host_results"]
+            ):
+                self.play_results["plays"][self.play["_uuid"]]["host_results"][
+                    result._host.name
+                ] = self._host_result_struct.copy()
+                self.play_results["host_results"][
+                    result._host.name
+                ] = self._host_result_struct.copy()
 
-            self.task_end_count=self.task_end_count+1
+            self.task_end_count = self.task_end_count + 1
 
             task_in_latest = self.latest_tasks[result._task._uuid]
             self._increment_status_all(result, status, task_in_latest)
 
             # an ignored but containaing a change => increment change also
-            if(status=="ignored_failed" and "results" in result._result and any(r['changed'] == True for r in result._result["results"])):
+            if (
+                status == "ignored_failed"
+                and "results" in result._result
+                and any(r["changed"] == True for r in result._result["results"])
+            ):
                 self._increment_status_all(result, "changed", task_in_latest)
             # a changed or ignored result also counts as ok
-            if (status=="changed" or status=="ignored_failed"):
+            if status == "changed" or status == "ignored_failed":
                 self._increment_status_all(result, "ok", task_in_latest)
 
     def _save_task(self, result, status="ok"):
         if result._task._uuid in self.tasks:
-            task=self.tasks[result._task._uuid]
+            task = self.tasks[result._task._uuid]
 
             self._count_results(result, status, task)
 
@@ -366,33 +423,85 @@ class CallbackModule(CallbackBase):
         self._save_run()
 
     def _save_task_readme(self, task):
-        json_task_lists={"env_rel_path": "../../../..", "task": task, "play_name": self.play["filename"]}
+        json_task_lists = {
+            "env_rel_path": "../../../..",
+            "task": task,
+            "play_name": self.play["filename"],
+        }
 
-        self._template_and_save(task["base_path"] +"/", "README.adoc", CaradocTemplates.task, json_task_lists, cache_name="tasks")
+        self._template_and_save(
+            task["base_path"] + "/",
+            "README.adoc",
+            CaradocTemplates.task,
+            json_task_lists,
+            cache_name="tasks",
+        )
 
     def _save_play(self):
-        play_name=self.play["filename"]
+        play_name = self.play["filename"]
 
         # Dont dump play if no task did run
-        if self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"] != self._host_result_struct:
-            json_play={ "play": self.play, "env_rel_path": "../../..", "tasks": self.tasks, "hosts_results": self.play_results["plays"][self.play["_uuid"]]["host_results"], "all_mode": False }
+        if (
+            self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"]
+            != self._host_result_struct
+        ):
+            json_play = {
+                "play": self.play,
+                "env_rel_path": "../../..",
+                "tasks": self.tasks,
+                "hosts_results": self.play_results["plays"][self.play["_uuid"]][
+                    "host_results"
+                ],
+                "all_mode": False,
+            }
 
             path = f"plays/{play_name}/"
 
-            self._template_and_save(path, "README.adoc", CaradocTemplates.playbook, json_play, cache_name="playbook")
+            self._template_and_save(
+                path,
+                "README.adoc",
+                CaradocTemplates.playbook,
+                json_play,
+                cache_name="playbook",
+            )
 
-            self._template_and_save(path, "charts.adoc", CaradocTemplates.playbook_charts, json_play, cache_name="playbook_charts")
+            self._template_and_save(
+                path,
+                "charts.adoc",
+                CaradocTemplates.playbook_charts,
+                json_play,
+                cache_name="playbook_charts",
+            )
 
             json_play["all_mode"] = True
-            self._template_and_save(path, "all.adoc", CaradocTemplates.playbook, json_play, cache_name="playbook")
+            self._template_and_save(
+                path,
+                "all.adoc",
+                CaradocTemplates.playbook,
+                json_play,
+                cache_name="playbook",
+            )
 
     def _save_run(self):
-        json_run={ "play_results": self.play_results, "tasks": self.tasks, "latest_tasks": self.latest_tasks, "run_date":self.run_date}
+        json_run = {
+            "play_results": self.play_results,
+            "tasks": self.tasks,
+            "latest_tasks": self.latest_tasks,
+            "run_date": self.run_date,
+        }
 
-        self._template_and_save("./", "README.adoc", CaradocTemplates.run, json_run, cache_name="run")
-        self._template_and_save("./", "charts.adoc", CaradocTemplates.run_charts, json_run, cache_name="run_charts")
+        self._template_and_save(
+            "./", "README.adoc", CaradocTemplates.run, json_run, cache_name="run"
+        )
+        self._template_and_save(
+            "./",
+            "charts.adoc",
+            CaradocTemplates.run_charts,
+            json_run,
+            cache_name="run_charts",
+        )
 
-    def _save_as_file(self,path,name,content):
+    def _save_as_file(self, path, name, content):
         path = os.path.join(self.log_folder, path)
         if not os.path.exists(path):
             makedirs_safe(path)
@@ -404,26 +513,45 @@ class CallbackModule(CallbackBase):
     # Render a caradoc template, including jinja common macros plus static include of env if asked
     def _template(self, loader, template, variables, cache_name):
         # add special variable to refer a cache name for CaradocTemplar
-        variables["_cache_name"]=cache_name
+        variables["_cache_name"] = cache_name
         _templar = CaradocTemplar(loader=loader, variables=variables)
 
-        template = CaradocTemplates.jinja_macros + "\n"  + template
-        return _templar.template(
-            template
-        )
+        template = CaradocTemplates.jinja_macros + "\n" + template
+        return _templar.template(template)
+
 
 display = Display()
 
+from ansible.errors import (
+    AnsibleAssertionError,
+    AnsibleError,
+    AnsibleFilterError,
+    AnsibleLookupError,
+    AnsibleOptionsError,
+    AnsiblePluginRemovedError,
+    AnsibleUndefinedVariable,
+)
+
 # Specific Templar that deals with bytecode cache
 class CaradocTemplar(Templar):
-
     def __init__(self, loader, shared_loader_obj=None, variables=None):
         super().__init__(loader, shared_loader_obj, variables)
         self.template_cache = {}
 
-    # Note: the template method is a simplified implementation of Templar. Only fail_on_undefined is supported
-    def do_template(self, data, convert_bare=False, preserve_trailing_newlines=True, escape_backslashes=True, fail_on_undefined=None, overrides=None,
-                 convert_data=True, static_vars=None, cache=True, disable_lookups=False):
+    #  Note: the template method is a simplified implementation of Templar. Only fail_on_undefined is supported
+    def do_template(
+        self,
+        data,
+        convert_bare=False,
+        preserve_trailing_newlines=True,
+        escape_backslashes=True,
+        fail_on_undefined=None,
+        overrides=None,
+        convert_data=True,
+        static_vars=None,
+        cache=True,
+        disable_lookups=False,
+    ):
         try:
             myenv = self.environment
             cache_name = self._available_variables["_cache_name"]
@@ -436,10 +564,16 @@ class CaradocTemplar(Templar):
                     t = CARADOC_CACHE[cache_name]
 
             except TemplateSyntaxError as e:
-                raise AnsibleError("template error while templating string: %s. String: %s" % (to_native(e), to_native(data)))
+                raise AnsibleError(
+                    "template error while templating string: %s. String: %s"
+                    % (to_native(e), to_native(data))
+                )
             except Exception as e:
-                if 'recursion' in to_native(e):
-                    raise AnsibleError("recursive loop detected in template string: %s" % to_native(data))
+                if "recursion" in to_native(e):
+                    raise AnsibleError(
+                        "recursive loop detected in template string: %s"
+                        % to_native(data)
+                    )
                 else:
                     return data
 
@@ -451,13 +585,25 @@ class CaradocTemplar(Templar):
             try:
                 res = j2_concat(rf)
             except TypeError as te:
-                if 'AnsibleUndefined' in to_native(te):
-                    errmsg = "Unable to look up a name or access an attribute in template string (%s).\n" % to_native(data)
-                    errmsg += "Make sure your variable name does not contain invalid characters like '-': %s" % to_native(te)
+                if "AnsibleUndefined" in to_native(te):
+                    errmsg = (
+                        "Unable to look up a name or access an attribute in template string (%s).\n"
+                        % to_native(data)
+                    )
+                    errmsg += (
+                        "Make sure your variable name does not contain invalid characters like '-': %s"
+                        % to_native(te)
+                    )
                     raise AnsibleUndefinedVariable(errmsg)
                 else:
-                    display.debug("failing because of a type error, template data is: %s" % to_text(data))
-                    raise AnsibleError("Unexpected templating type error occurred on (%s): %s" % (to_native(data), to_native(te)))
+                    display.debug(
+                        "failing because of a type error, template data is: %s"
+                        % to_text(data)
+                    )
+                    raise AnsibleError(
+                        "Unexpected templating type error occurred on (%s): %s"
+                        % (to_native(data), to_native(te))
+                    )
             return res
         except (UndefinedError, AnsibleUndefinedVariable) as e:
             if fail_on_undefined:
@@ -466,15 +612,16 @@ class CaradocTemplar(Templar):
                 display.debug("Ignoring undefined failure: %s" % to_text(e))
                 return data
 
-    # for backwards compatibility in case anyone is using old private method directly
+        # for backwards compatibility in case anyone is using old private method directly
+        # FIXME: check which version may use and remove
         _do_template = do_template
 
 class CaradocTemplates:
     # Applied to any adoc template, ensure fragments can be viewed with proper display
 
     # this jinja section is include on each _template render
-# //TODO: diffs (https://github.com/ansible/ansible/blob/devel/lib/ansible/plugins/callback/__init__.py#L380)
-    jinja_macros='''
+    # //TODO: diffs (https://github.com/ansible/ansible/blob/devel/lib/ansible/plugins/callback/__init__.py#L380)
+    jinja_macros = """
 {%- macro task_status_label(status) -%}
 {%- if status == "ok" -%}🟢
 {%- elif status == "changed" -%}🟡
@@ -523,11 +670,11 @@ class CaradocTemplates:
 }
 ....
 {%- endmacro %}
-'''
+"""
 
     # Raw result
-    result='{{ result | default({}) |to_nice_json }}'
-    task='''
+    result = "{{ result | default({}) |to_nice_json }}"
+    task = """
 include::{{ env_rel_path | default('..') }}/.caradoc.env.adoc[]
 
 = TASK: {{ task.task_name }} (link:{source-file-scheme}+++{{ task.path }}+++[view source])
@@ -566,12 +713,12 @@ include::{{ host }}.json[]
 -------
 =====
 {%endfor%}
-'''
+"""
 
-    #TODO: use interactive graphif html or if some CARADOC_INTERACTIVE env var is true
-    #TODO: find a way to show total
-    #TODO: could we throttle to avoid blinking effects
-    playbook_charts='''
+    # TODO: use interactive graphif html or if some CARADOC_INTERACTIVE env var is true
+    # TODO: find a way to show total
+    # TODO: could we throttle to avoid blinking effects
+    playbook_charts = """
 include::{{ env_rel_path | default('..') }}/.caradoc.env.adoc[]
 include::{{ env_rel_path | default('../..') }}/.caradoc.css.adoc[]
 
@@ -600,10 +747,10 @@ a{% if loop.index != loop.length %},{% endif %}
 |
 {% endfor %}
 |====
-'''
+"""
 
     # TODO: create anchors for task on host
-    playbook='''
+    playbook = """
 include::{{ env_rel_path | default('..') }}/.caradoc.env.adoc[]
 
 = PLAY: {{ play['name'] | default(play['name']) }}
@@ -667,10 +814,10 @@ table tr td:first-child p a {
 {% endfor %}
 |====
 
-'''
+"""
 
     # TODO: create macro for tasks "ok (inc. x x x x)" and share with playbook template
-    run='''
+    run = """
 include::{{ env_rel_path | default('..') }}/.caradoc.env.adoc[]
 
 = ⚡ | {{ run_date }}
@@ -738,9 +885,9 @@ include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 
 |
 |====
-'''
+"""
     # FIXME: refactor with two macros: make sums and dump vegalite with color theme configurable
-    run_charts='''
+    run_charts = """
 include::{{ env_rel_path | default('..') }}/.caradoc.env.adoc[]
 
 {% set play_results_sum = [] %}
@@ -860,10 +1007,10 @@ endif::[]
 ....
 |=====
 
-'''
+"""
 
     # Mainlys tricks for kroki and vscode
-    env='''
+    env = """
 :toclevels: 2
 // TODO: set env var option for kroki localhost or any url
 :kroki-server-url: http://localhost:8000
@@ -879,8 +1026,8 @@ endif::[]
 ifeval::["{caradoc-theme}" == "dark"]
 :caradoc_label_color: white
 endif::[]
-'''
-    css='''
+"""
+    css = """
 ifeval::["{caradoc-theme}" == "dark"]
 +++ <style> a, a:hover { color: #8cb4ff } a:hover {text-decoration: none} </style>+++
 +++ <style> code { background: transparent !important; color: white !important }  .hljs-keyword,.hljs-link,.hljs-literal,.hljs-name,.hljs-symbol{color:#569cd6}.hljs-addition,.hljs-deletion{display:inline-block;width:100%}.hljs-link{text-decoration:underline}.hljs-built_in,.hljs-type{color:#4ec9b0}.hljs-class,.hljs-number{color:#b8d7a3}.hljs-meta-string,.hljs-string{color:#d69d85}.hljs-regexp,.hljs-template-tag{color:#9a5334}.hljs-formula,.hljs-function,.hljs-params,.hljs-subst,.hljs-title{color:#dcdcdc}.hljs-comment,.hljs-quote{color:#57a64a;font-style:italic}.hljs-doctag{color:#608b4e}.hljs-meta,.hljs-meta-keyword,.hljs-tag{color:#9b9b9b}.hljs-template-variable,.hljs-variable{color:#bd63c5}.hljs-attr,.hljs-attribute,.hljs-builtin-name{color:#9cdcfe}.hljs-section{color:gold}.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}.hljs-bullet,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-selector-pseudo,.hljs-selector-tag{color:#d7ba7d}.hljs-addition{background-color:var(--vscode-diffEditor-insertedTextBackground,rgba(155,185,85,.2));color:#9bb955}.hljs-deletion{background:var(--vscode-diffEditor-removedTextBackground,rgba(255,0,0,.2));color:red} </style> +++
@@ -891,4 +1038,4 @@ ifeval::["{caradoc-theme}" != "dark"]
 endif::[]
 +++ <style> #header, #content, #footer, #footnotes { max-width: none;} .emoji_table td:nth-child(1n+3), .emoji_table th:nth-child(1n+3) { text-align: center; padding-left: 2px; padding-right: 2px; } </style> +++
 +++ <style> .run_indicator { font-size: 1.5em; text-align: center; } table.no-border, table.no-border > tbody > th, table.no-border > tbody > tr > td, table.no-border > tbody > tr { border-collapse: collapse !important; border: none !important; }</style>+++
-'''
+"""
