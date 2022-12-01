@@ -24,7 +24,7 @@ image::https://github.com/ansible-community/molecule-kubevirt/workflows/tox/badg
 
 Records Ansible as Asciidoc files. Uses kroki/vegalite for charts. Best rendered with:
 
-* VsCode AsciiDoctor extension ** version 3.0.1 **
+* VsCode AsciiDoctor extension ** pre-release version **
 * Chromium AsciiDoctor extension
 * AsciiDoctor CLI
 
