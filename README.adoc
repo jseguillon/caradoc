@@ -21,11 +21,13 @@ endif::[]
 
 == About the Project
 
-Caradoc Also Records Ansible as Asciidoc files. Uses kroki/vegalite for charts. Best rendered with:
+Records Ansible as Asciidoc files. Uses kroki/vegalite for charts. Best rendered with:
 
 * VsCode AsciiDoctor extension ** version 3.0.1 **
 * Chromium AsciiDoctor extension
 * AsciiDoctor CLI
+
+Requires Ansible>=3 and python>=3.7.
 
 [cols="~a,~a,~a"]
 |====
