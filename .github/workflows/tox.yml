@@ -29,7 +29,7 @@ jobs:
             PYTHON_BASE_IMAGE: python:3.8
           - tox_env: py39-ansible_6
             PYTHON_BASE_IMAGE: python:3.9
-          - tox_env: py39-ansible_7
+          - tox_env: py310-ansible_7
             PYTHON_BASE_IMAGE: python:3.9
 
     steps:
