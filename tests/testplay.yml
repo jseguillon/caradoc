@@ -142,7 +142,6 @@
     - name: Task fail one host
       debug:
         msg: "{{ inventory_hostname }}"
-      failed_when: inventory_hostname == 'host1'
 
     - name: Block get diffs
       block:
@@ -177,8 +176,6 @@
             - tempfile_1.path is defined
             - inventory_hostname != 'host2'
             - inventory_hostname != 'host3'
-          failed_when: inventory_hostname == 'host1'
-
 
 
         - name: "Task with {{ jinja }} into name"
