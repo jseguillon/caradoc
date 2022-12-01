@@ -97,6 +97,7 @@ class CallbackModule(CallbackBase):
 
         # Current playbook running
         self.play = None
+        self.serial_count = 0
 
         # Track filenames of plays and count to avoid duplicated
         self.tasks_names_count = dict()
@@ -153,15 +154,23 @@ class CallbackModule(CallbackBase):
             # TODO: ok to loose track of tasks but may should refer plays for global stats
             self.tasks = dict()
 
-        self.play_results["plays"][play._uuid] = {
+        play_uuid = play._uuid
+        if self.play != None and (play._uuid == self.play["_uuid"] or self.play["_uuid"] == f"{play._uuid}-{self.serial_count}"):
+            self.serial_count = self.serial_count + 1
+            play_uuid = f"{play._uuid}-{self.serial_count}"
+        elif self.play != None and play._uuid != self.play["_uuid"]:
+            self.serial_count = 0
+
+        self.play_results["plays"][play_uuid] = {
             "host_results": {"all": self._host_result_struct.copy()},
             "name": play_name,
             "filename": play_filename,
         }
+
         self.play = {
             "name": play_name,
             "filename": play_filename,
-            "_uuid": play._uuid,
+            "_uuid": play_uuid,
             "tasks": [],
             "attributes": play.hosts,
         }
@@ -250,9 +259,14 @@ class CallbackModule(CallbackBase):
 
     def _create_new_task_or_handler(self, task_or_handler, has_rescue=False):
         name = self._get_new_task_name(task_or_handler)
-        if task_or_handler._uuid not in self.tasks:
-            self.play["tasks"].append(str(task_or_handler._uuid))
-            self.tasks[task_or_handler._uuid] = {
+        task_or_handler_uuid = task_or_handler._uuid
+        if self.serial_count != 0:
+            task_or_handler_uuid = f"{task_or_handler_uuid}-{self.serial_count}"
+
+        if task_or_handler_uuid not in self.tasks:
+            self.play["tasks"].append(str(task_or_handler_uuid))
+            self.tasks[task_or_handler_uuid] = {
+                "_uuid": task_or_handler_uuid,
                 "task_name": wrap_var(task_or_handler.get_name()),
                 "base_path": f"plays/{self.play['filename']}/{name}",
                 "filename": name,
@@ -265,14 +279,14 @@ class CallbackModule(CallbackBase):
             }
 
             new_task_latest = {
-                "task_uuid": task_or_handler._uuid,
+                "task_uuid": task_or_handler_uuid,
                 "task_name": wrap_var(task_or_handler.get_name()),
                 "play_name": self.play["name"],
                 "play_filename": self.play["filename"],
                 "all_results": self._host_result_struct.copy(),
                 "task_filename": name,
             }
-            self.latest_tasks[task_or_handler._uuid] = new_task_latest
+            self.latest_tasks[task_or_handler_uuid] = new_task_latest
             self.latest_tasks = dict(list(self.latest_tasks.items())[-20:])
 
     def v2_playbook_on_notify(self, handler, host):
@@ -283,7 +297,11 @@ class CallbackModule(CallbackBase):
         self.playbook_on_notify(host, handler)
 
     def v2_on_file_diff(self, result):
-        current_task = self.tasks[result._task._uuid]
+        task_uuid = result._task._uuid
+        if self.serial_count != 0:
+            task_uuid = f"{task_uuid}-{self.serial_count}"
+
+        current_task = self.tasks[task_uuid]
         ansi_escape3 = re.compile(
             r"(\x9B|\x1B\[)[0-?]*[ -/]*[@-~]", flags=re.IGNORECASE
         )
@@ -326,8 +344,13 @@ class CallbackModule(CallbackBase):
         # TODO: a serializer may be better than this json tricky construction
         # Also in final design may not need all of this an rely or links:[] (for host as an example)
         results = strip_internal_keys(module_response_deepcopy(result._result))
-        current_task = self.tasks[result._task._uuid]
-        internal_result = current_task["results"][result._host.name]
+
+        task_uuid = result._task._uuid
+        if self.serial_count != 0:
+            task_uuid = f"{task_uuid}-{self.serial_count}"
+
+        current_task = self.tasks[task_uuid]
+
         jsonified = json.dumps(
             results, cls=AnsibleJSONEncoder, ensure_ascii=False, sort_keys=False
         )
@@ -348,19 +371,22 @@ class CallbackModule(CallbackBase):
         self._save_as_file(path, name, result)
 
     def _increment_status_all(self, result, status, task_in_latest):
-        self.play_results["plays"][self.play["_uuid"]]["host_results"][
+
+        play_uuid = self.play["_uuid"]
+
+        self.play_results["plays"][play_uuid]["host_results"][
             result._host.name
         ][status] = (
-            self.play_results["plays"][self.play["_uuid"]]["host_results"][
+            self.play_results["plays"][play_uuid]["host_results"][
                 result._host.name
             ][status]
             + 1
         )
 
-        self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"][
+        self.play_results["plays"][play_uuid]["host_results"]["all"][
             status
         ] = (
-            self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"][
+            self.play_results["plays"][play_uuid]["host_results"]["all"][
                 status
             ]
             + 1
@@ -379,7 +405,7 @@ class CallbackModule(CallbackBase):
         if status == "failed" and task["has_rescue"]:
             status = "rescued"
 
-        if result._task._uuid in self.tasks:
+        if task["_uuid"] in self.tasks:
             if result._host.name not in task["results"]:
                 task["results"][result._host.name] = {}
             task["results"][result._host.name]["status"] = status
@@ -397,7 +423,7 @@ class CallbackModule(CallbackBase):
 
             self.task_end_count = self.task_end_count + 1
 
-            task_in_latest = self.latest_tasks[result._task._uuid]
+            task_in_latest = self.latest_tasks[task["_uuid"]]
             self._increment_status_all(result, status, task_in_latest)
 
             # an ignored but containaing a change => increment change also
@@ -412,8 +438,12 @@ class CallbackModule(CallbackBase):
                 self._increment_status_all(result, "ok", task_in_latest)
 
     def _save_task(self, result, status="ok"):
-        if result._task._uuid in self.tasks:
-            task = self.tasks[result._task._uuid]
+        task_uuid = result._task._uuid
+        if self.serial_count != 0:
+            task_uuid = f"{task_uuid}-{self.serial_count}"
+
+        if task_uuid in self.tasks:
+            task = self.tasks[task_uuid]
 
             self._count_results(result, status, task)
 
@@ -804,7 +834,7 @@ table tr td:first-child p a {
 {% set result_sorted=tasks[i]['results'] | dictsort %}
 {% for host, result in result_sorted %}
 {% if all_mode or ( (result.status | default('running') != 'ok') and (result.status | default('running') != 'skipped') ) %}
-| link:++{{ './' + tasks[i].filename + '/' + 'README.adoc' }}++[{{ task_status_label(result.status | default('running')) }}]
+| link:++{{ './' + tasks[i].filename + '/' + 'README.adoc' }}++[+++{{ task_status_label(result.status | default('running')) }}+++]
 | {{ host }}
 | link:++{{ './' + tasks[i].filename + '/' + 'README.adoc' }}++[++{{ tasks[i].task_name | default('no_name') | replace("|","\|") }}++]
 | {{ tasks[i].action }}
@@ -872,8 +902,8 @@ include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 ! Task ! 🟢 ! 🔴 ! 🟡 ! 🟣  ! 🔵 ! ♻️
 {% for task in latest_tasks|reverse %}
 {% set x = latest_tasks[task] %}
-! link:+++plays/{{ x.play_filename  | replace('!', '\!') | replace('|', '\|') }}/README.adoc+++[{{ x.play_name | replace('!', '\!') | replace('|', '\|') }}]
-! link:+++plays/{{ x.play_filename  | replace('!', '\!') | replace('|', '\|') }}/{{ x.task_filename  | replace('!', '\!') | replace('|', '\|')  }}/README.adoc+++[{{ x.task_name | default('no_name', True) | replace('!', '\!') | replace('|', '\|')  }}]
+! link:+++plays/{{ x.play_filename  | replace('!', '\!') | replace('|', '\|') }}/README.adoc+++[+++{{ x.play_name | replace('!', '\!') | replace('|', '\|') }}+++]
+! link:+++plays/{{ x.play_filename  | replace('!', '\!') | replace('|', '\|') }}/{{ x.task_filename  | replace('!', '\!') | replace('|', '\|')  }}/README.adoc+++[+++{{ x.task_name | default('no_name', True) | replace('!', '\!') | replace('|', '\|')  }}+++]
 ! {{ x.all_results.ok | string if x.all_results.ok > 0 else '' }}
 ! {{ x.all_results.failed | string if x.all_results.failed > 0 else '' }}
 ! {{ x.all_results.changed | string if x.all_results.changed > 0 else '' }}
@@ -910,7 +940,7 @@ include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 
 {% for host in filtered_results %}
 {% set curr_all_results = filtered_results[host] %}
-{% set curr_all_count = curr_all_results.ok + curr_all_results.changed + curr_all_results.failed + curr_all_results.ignored_failed %}
+{% set curr_all_count = curr_all_results.ok + curr_all_results.changed + curr_all_results.failed + curr_all_results.ignored_failed + curr_all_results.rescued %}
 {% set host_results = host_results.append({'host': host, 'value': curr_all_count})  %}
 
 
