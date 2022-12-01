@@ -35,7 +35,7 @@ jobs:
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Update packages index
         run: |
@@ -47,11 +47,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 5
-          max_attempts: 3
-          command: |
+        run: |
             python -m pip install -U pip
             pip install tox
 
@@ -62,7 +58,7 @@ jobs:
           # grep -v -i exception debug.log >/dev/null
 
       - name: Upload logs
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: molecule-kubevirt-${{ matrix.tox_env }}-${{ github.run_id }}
           path: |
