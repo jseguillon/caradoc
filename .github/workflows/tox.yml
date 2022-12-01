@@ -57,10 +57,19 @@ jobs:
           tox -e ${{ matrix.tox_env }} 2> debug.log
           # grep -v -i exception debug.log >/dev/null
 
+      - name: Get build container
+        id: adocbuild
+        uses: tonynv/asciidoctor-action@master
+        with:
+          program: |
+            cd .caradoc/*
+            asciidoctor '**/*.adoc' -r asciidoctor-kroki
+
       - name: Upload logs
         uses: actions/upload-artifact@v3
         with:
-          name: molecule-kubevirt-${{ matrix.tox_env }}-${{ github.run_id }}
+          name: logs-upload-${{ matrix.tox_env }}-${{ github.run_id }}
           path: |
             .caradoc
             debug.log
+            .pages
