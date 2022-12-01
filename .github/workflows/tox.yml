@@ -1,0 +1,58 @@
+name: tox
+
+on:
+  create:
+    tags:
+      - "**"
+  push:
+    branches:  # any integration branch but not tag
+      - "main"
+  pull_request:
+  schedule:
+    - cron: 1 0 * * *  # Run daily at 0:01 UTC
+
+jobs:
+  build:
+    name: ${{ matrix.tox_env }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tox_env: lint
+          - tox_env: py37-ansible_2.10
+            PYTHON_BASE_IMAGE: python:3.7
+          - tox_env: py37-ansible_4
+            PYTHON_BASE_IMAGE: python:3.7
+          - tox_env: py38-ansible_5
+            PYTHON_BASE_IMAGE: python:3.8
+          - tox_env: py39-ansible_6
+            PYTHON_BASE_IMAGE: python:3.9
+          - tox_env: py39-ansible_7
+            PYTHON_BASE_IMAGE: python:3.9
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v2
+
+      - name: Update packages index
+        run: |
+          sudo apt-get update
+
+      - name: Install a default Python
+        uses: actions/setup-python@v2
+
+      - name: Install dependencies
+        uses: nick-invision/retry@v2
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          command: |
+            python -m pip install -U pip
+            pip install tox
+
+      - name: Run tox -e ${{ matrix.tox_env }}
+        run: |
+          echo "${{ matrix.PREFIX }} tox -e ${{ matrix.tox_env }}"
+          tox -e ${{ matrix.tox_env }}
