@@ -3,15 +3,12 @@
 
 from __future__ import absolute_import, division, print_function
 
-# FIXME: some clean to be done on imports - need tox and lint
-import json
 import logging
 import os
 import re
 import time
 
 from ansible.module_utils._text import to_bytes, to_native, to_text
-from ansible.parsing.ajson import AnsibleJSONEncoder
 from ansible.plugins.callback import CallbackBase
 from ansible.template import Templar
 from ansible.template.vars import AnsibleJ2Vars
@@ -22,6 +19,16 @@ from ansible.vars.clean import module_response_deepcopy, strip_internal_keys
 from jinja2.exceptions import TemplateSyntaxError, UndefinedError
 from jinja2.utils import concat as j2_concat
 
+from ansible.errors import (  # noqa: F401
+    AnsibleAssertionError,
+    AnsibleError,
+    AnsibleFilterError,
+    AnsibleLookupError,
+    AnsibleOptionsError,
+    AnsiblePluginRemovedError,
+    AnsibleUndefinedVariable,
+)
+
 # Ansible CLI options are now in ansible.context in >= 2.8
 # https://github.com/ansible/ansible/commit/afdbb0d9d5bebb91f632f0d4a1364de5393ba17a
 
@@ -29,7 +36,6 @@ from jinja2.utils import concat as j2_concat
 DOCUMENTATION = """
 callback: caradoc
 callback_type: notification
-# TODO: pydoc
 requirements:
   - none ? ?
 short_description: Create asciidoc reports of Ansible execution
@@ -80,6 +86,7 @@ class CallbackModule(CallbackBase):
         "ignored_failed": 0,
         "rescued": 0,
     }
+
     # FIXME deal with nolog (https://github.com/ansible/ansible/blob/3515b3c5fcf011ba9bb63fe069520c7d528e3c54/lib/ansible/executor/task_result.py#L131)
     def __init__(self):
         super().__init__()
@@ -155,10 +162,13 @@ class CallbackModule(CallbackBase):
             self.tasks = dict()
 
         play_uuid = play._uuid
-        if self.play != None and (play._uuid == self.play["_uuid"] or self.play["_uuid"] == f"{play._uuid}-{self.serial_count}"):
+        if self.play is not None and (
+            play._uuid == self.play["_uuid"]
+            or self.play["_uuid"] == f"{play._uuid}-{self.serial_count}"
+        ):
             self.serial_count = self.serial_count + 1
             play_uuid = f"{play._uuid}-{self.serial_count}"
-        elif self.play != None and play._uuid != self.play["_uuid"]:
+        elif self.play is not None and play._uuid != self.play["_uuid"]:
             self.serial_count = 0
 
         self.play_results["plays"][play_uuid] = {
@@ -351,10 +361,6 @@ class CallbackModule(CallbackBase):
 
         current_task = self.tasks[task_uuid]
 
-        jsonified = json.dumps(
-            results, cls=AnsibleJSONEncoder, ensure_ascii=False, sort_keys=False
-        )
-
         json_result = {"result": wrap_var(results)}
         self._template_and_save(
             current_task["base_path"],
@@ -374,22 +380,17 @@ class CallbackModule(CallbackBase):
 
         play_uuid = self.play["_uuid"]
 
-        self.play_results["plays"][play_uuid]["host_results"][
-            result._host.name
-        ][status] = (
-            self.play_results["plays"][play_uuid]["host_results"][
-                result._host.name
-            ][status]
-            + 1
-        )
-
-        self.play_results["plays"][play_uuid]["host_results"]["all"][
+        self.play_results["plays"][play_uuid]["host_results"][result._host.name][
             status
         ] = (
-            self.play_results["plays"][play_uuid]["host_results"]["all"][
+            self.play_results["plays"][play_uuid]["host_results"][result._host.name][
                 status
             ]
             + 1
+        )
+
+        self.play_results["plays"][play_uuid]["host_results"]["all"][status] = (
+            self.play_results["plays"][play_uuid]["host_results"]["all"][status] + 1
         )
         self.play_results["host_results"]["all"][status] = (
             self.play_results["host_results"]["all"][status] + 1
@@ -430,7 +431,7 @@ class CallbackModule(CallbackBase):
             if (
                 status == "ignored_failed"
                 and "results" in result._result
-                and any(r["changed"] == True for r in result._result["results"])
+                and any(r["changed"] for r in result._result["results"])
             ):
                 self._increment_status_all(result, "changed", task_in_latest)
             # a changed or ignored result also counts as ok
@@ -552,15 +553,6 @@ class CallbackModule(CallbackBase):
 
 display = Display()
 
-from ansible.errors import (
-    AnsibleAssertionError,
-    AnsibleError,
-    AnsibleFilterError,
-    AnsibleLookupError,
-    AnsibleOptionsError,
-    AnsiblePluginRemovedError,
-    AnsibleUndefinedVariable,
-)
 
 # Specific Templar that deals with bytecode cache
 class CaradocTemplar(Templar):
@@ -642,9 +634,6 @@ class CaradocTemplar(Templar):
                 display.debug("Ignoring undefined failure: %s" % to_text(e))
                 return data
 
-        # for backwards compatibility in case anyone is using old private method directly
-        # FIXME: check which version may use and remove
-        _do_template = do_template
 
 class CaradocTemplates:
     # Applied to any adoc template, ensure fragments can be viewed with proper display
