@@ -143,6 +143,10 @@ class CallbackModule(CallbackBase):
         self._playbook = playbook
         return
 
+    # TODO: may do something with this
+    def v2_runner_retry(self, result):
+        pass
+
     # FIXME: serial dont work: only last host play will be tracked => test uuid and act
     def v2_playbook_on_play_start(self, play):
         self.log.debug("v2_playbook_on_play_start")
@@ -204,6 +208,11 @@ class CallbackModule(CallbackBase):
             has_rescue = True
 
         self._create_new_task_or_handler(task, has_rescue)
+        task_uuid = task._uuid
+        if self.serial_count != 0:
+            task_uuid = f"{task_uuid}-{self.serial_count}"
+
+        self._save_task_readme(self.tasks[task_uuid])
         self._save_play()
         self._save_run()
 
@@ -470,7 +479,6 @@ class CallbackModule(CallbackBase):
 
     def _save_play(self):
         play_name = self.play["filename"]
-
         # Dont dump play if no task did run
         if (
             self.play_results["plays"][self.play["_uuid"]]["host_results"]["all"]
@@ -703,10 +711,14 @@ include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 
 == Links
 
-* Playbook: link:../README.adoc[{{ play_name }}](link:../all.adoc[all tasks])
+* Playbook: link:../README.adoc[+++{{ play_name }}+++](link:../all.adoc[all tasks])
 * Run: link:../../../README.adoc[run]
 
 == Results
+
+{% if task.results | default({}) | length == 0 -%}
++++ ... waiting ... +++
+{%- endif -%}
 {% for host in task.results | default({})  | sort %}
 
 === {{ task_status_label(task.results[host].status | default('running')) }} {{ host }} (link:./{{ host }}.json[view raw])
@@ -874,7 +886,7 @@ include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 !=====
 ! Play ! 🟢 ! 🔴
 {% for play in play_results.plays | default({}) | reverse %}
-! link:+++plays/{{  play_results.plays[play].filename | replace('!', '\!') | replace('|', '\|') }}/README.adoc+++[{{  play_results.plays[play].name  | replace('!', '\!') | replace('|', '\|')  }}]
+! link:+++plays/{{  play_results.plays[play].filename | replace('!', '\!') | replace('|', '\|') }}/README.adoc+++[+++{{  play_results.plays[play].name  | replace('!', '\!') | replace('|', '\|')  }}+++]
 ! {{ play_results.plays[play].host_results.all.ok | string }}
 ! {{ play_results.plays[play].host_results.all.failed | string }}
 {% endfor %}
