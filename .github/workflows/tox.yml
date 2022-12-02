@@ -11,6 +11,17 @@ on:
   schedule:
     - cron: 1 0 * * *  # Run daily at 0:01 UTC
 
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
 jobs:
   build:
     name: ${{ matrix.tox_env }}
@@ -32,6 +43,10 @@ jobs:
             python-version: '3.9'
           - tox_env: py310-ansible_7
             python-version: '3.10'
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - name: Check out code
@@ -65,15 +80,27 @@ jobs:
             cd .caradoc/*
             asciidoctor '**/*.adoc' -r asciidoctor-kroki
 
-      - name: Upload logs
-        uses: actions/upload-artifact@v3
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@main
         with:
-          name: logs-upload-${{ matrix.tox_env }}-${{ github.run_id }}
-          path: |
-            .caradoc
-            debug.log
-      - name: Deploy
-        uses: JamesIves/github-pages-deploy-action@v4
-        with:
-          folder: .caradoc
+          name: github-pages
+          path: .caradoc
+        if: ${{ contains(matrix.tox_env, 'py310-ansible_7') }}
 
+      - name: Upload artifact
+        uses: actions/upload-artifact@main
+        with:
+          name: github-pages-${{ matrix.tox_env }}
+          path: .caradoc
+        if: ${{ ! contains(matrix.tox_env, 'py310-ansible_7') }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@main
+        with:
+          name: debug-${{ matrix.tox_env }}
+          path: debug.log
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v1
+        if: ${{ contains(matrix.tox_env, 'py310-ansible_7') }}
