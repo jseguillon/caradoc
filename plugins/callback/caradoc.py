@@ -1050,7 +1050,9 @@ endif::[]
 ifndef::source-highlighter[]
 :source-highlighter: highlight.js
 endif::[]
+ifndef::source-file-scheme[]
 :source-file-scheme: file://
+endif::[]
 ifdef::env-vscode[]
 :relfilesuffix: .adoc
 :source-file-scheme: vscode://file

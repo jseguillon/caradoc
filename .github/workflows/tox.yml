@@ -78,7 +78,7 @@ jobs:
         with:
           program: |
             cd .caradoc/*
-            asciidoctor '**/*.adoc' -r asciidoctor-kroki  -a kroki-server-url=https://kroki.io
+            asciidoctor '**/*.adoc' -r asciidoctor-kroki  -a kroki-server-url=https://kroki.io -a source-file-scheme=https://
 
       - name: Add index.html redirect
         run: |
@@ -91,6 +91,8 @@ jobs:
                     </head>
             </html>
           EOF
+          find .caradoc/ -type f -exec sed -i  's#\(/home/runner/work/caradoc/caradoc/\)\([^:]*\):\([^:]*\)#github.com/jseguillon/caradoc/blob/main/\2\#L\3#g'  {} \;
+
         if: ${{ contains(matrix.tox_env, 'py310-ansible_7') }}
 
       - name: Upload artifact
