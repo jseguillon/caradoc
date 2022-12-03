@@ -1047,11 +1047,13 @@ endif::[]
 ifndef::kroki-server-url[]
 :kroki-server-url: http://localhost:8000
 endif::[]
+ifndef::source-highlighter[]
+:source-highlighter: highlight.js
+endif::[]
 :source-file-scheme: file://
 ifdef::env-vscode[]
 :relfilesuffix: .adoc
 :source-file-scheme: vscode://file
-:source-highlighter: highlight.js
 endif::[]
 ifdef::backend-html5[]
 :relfilesuffix: .html
