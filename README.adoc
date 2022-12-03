@@ -18,6 +18,8 @@ ifdef::env-github[]
 :warning-caption: :warning:
 endif::[]
 
+image::docs/caradoc-logo.png[]
+
 image::https://github.com/ansible-community/molecule-kubevirt/workflows/tox/badge.svg[https://github.com/ansible-community/molecule-kubevirt/actions]
 
 == About the Project
