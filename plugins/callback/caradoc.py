@@ -835,9 +835,9 @@ table tr td:first-child p a {
 {% set result_sorted=tasks[i]['results'] | dictsort %}
 {% for host, result in result_sorted %}
 {% if all_mode or ( (result.status | default('running') != 'ok') and (result.status | default('running') != 'skipped') ) %}
-| link:++{{ './' + tasks[i].filename + '/' + 'README{relfilesuffix}' }}++[+++{{ task_status_label(result.status | default('running')) }}+++]
+| link:+++{{ './' + tasks[i].filename }}/README+++{relfilesuffix}[+++{{ task_status_label(result.status | default('running')) }}+++]
 | {{ host }}
-| link:++{{ './' + tasks[i].filename + '/' + 'README{relfilesuffix}' }}++[++{{ tasks[i].task_name | default('no_name') | replace("|","\|") }}++]
+| link:+++{{ './' + tasks[i].filename }}/README+++{relfilesuffix}[+++{{ tasks[i].task_name | default('no_name') | replace("|","\|") }}+++]
 | {{ tasks[i].action }}
 | {{ tasks[i].tags | default('[]') | string }}
 {% endif %}
