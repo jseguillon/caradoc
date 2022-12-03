@@ -1044,7 +1044,9 @@ endif::[]
     env = """
 :toclevels: 2
 // TODO: set env var option for kroki localhost or any url
+ifndef::kroki-server-url[]
 :kroki-server-url: http://localhost:8000
+endif::[]
 :source-file-scheme: file://
 ifdef::env-vscode[]
 :relfilesuffix: .adoc
