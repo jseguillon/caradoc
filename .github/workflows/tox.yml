@@ -72,13 +72,26 @@ jobs:
           tox -e ${{ matrix.tox_env }} 2> debug.log
           # grep -v -i exception debug.log >/dev/null
 
-      - name: Get build container
+      - name: Build html doc via asciidoctor
         id: adocbuild
         uses: tonynv/asciidoctor-action@master
         with:
           program: |
             cd .caradoc/*
             asciidoctor '**/*.adoc' -r asciidoctor-kroki
+
+      - name: Add index.html redirect
+        run: |
+          target_dir="$(ls -d .caradoc/*/)"
+          taget_dir_relpath="$(basename $target_dir)"
+          cat <<EOF > .caradoc/index.html
+            <html>
+                    <head>
+                    <meta http-equiv="refresh" content="0; url=${taget_dir_relpath}/README.html" />a
+                    </head>
+            </html>
+          EOF
+        if: ${{ contains(matrix.tox_env, 'py310-ansible_7') }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@main
