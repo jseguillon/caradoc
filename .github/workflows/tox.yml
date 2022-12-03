@@ -78,7 +78,7 @@ jobs:
         with:
           program: |
             cd .caradoc/*
-            asciidoctor '**/*.adoc' -r asciidoctor-kroki
+            asciidoctor '**/*.adoc' -r asciidoctor-kroki  -a kroki-server-url=https://kroki.io
 
       - name: Add index.html redirect
         run: |
