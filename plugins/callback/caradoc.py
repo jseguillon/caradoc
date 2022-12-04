@@ -711,8 +711,8 @@ include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 
 == Links
 
-* Playbook: link:../README.adoc[+++{{ play_name }}+++](link:../all.adoc[all tasks])
-* Run: link:../../../README.adoc[run]
+* Playbook: link:../README{relfilesuffix}[+++{{ play_name }}+++](link:../all{relfilesuffix}[all tasks])
+* Run: link:../../../README{relfilesuffix}[run]
 
 == Results
 
@@ -754,7 +754,7 @@ include::{{ env_rel_path | default('..') }}/.caradoc.env.adoc[]
 include::{{ env_rel_path | default('../..') }}/.caradoc.css.adoc[]
 
 [.text-center]
-(link:./README.adoc[back to play])
+(link:./README{relfilesuffix}[back to play])
 
 [.text-center]
 {{ get_vega_donut("all", hosts_results, "30%") }}
@@ -794,7 +794,7 @@ include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 |====
 |
 [.text-center]
-🖥️ Hosts: *{{ (hosts_results | list | length -1) | string }}* (link:./charts.adoc[view charts])
+🖥️ Hosts: *{{ (hosts_results | list | length -1) | string }}* (link:./charts{relfilesuffix}[view charts])
 |
 [.text-center]
 🟢 ok: *{{ hosts_results.all.ok | string }}* (inc. 🟡changed: {{ hosts_results.all.changed | string }}, 🟣ignored: {{ hosts_results.all.ignored_failed | string }})
@@ -812,11 +812,11 @@ include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 
 == Links
 {% if not all_mode | default(False) %}
-* link:./all.adoc[all results, including ok and skipped]
+* link:./all{relfilesuffix}[all results, including ok and skipped]
 {% else %}
-* link:./README.adoc[playbook summary]
+* link:./README{relfilesuffix}[playbook summary]
 {%  endif %}
-* link:../../README.adoc[run]
+* link:../../README{relfilesuffix}[run]
 +++ <style> +++
 table tr td:first-child p a {
   text-decoration: none!important;
@@ -835,9 +835,9 @@ table tr td:first-child p a {
 {% set result_sorted=tasks[i]['results'] | dictsort %}
 {% for host, result in result_sorted %}
 {% if all_mode or ( (result.status | default('running') != 'ok') and (result.status | default('running') != 'skipped') ) %}
-| link:++{{ './' + tasks[i].filename + '/' + 'README.adoc' }}++[+++{{ task_status_label(result.status | default('running')) }}+++]
+| link:+++{{ './' + tasks[i].filename }}/README+++{relfilesuffix}[+++{{ task_status_label(result.status | default('running')) }}+++]
 | {{ host }}
-| link:++{{ './' + tasks[i].filename + '/' + 'README.adoc' }}++[++{{ tasks[i].task_name | default('no_name') | replace("|","\|") }}++]
+| link:+++{{ './' + tasks[i].filename }}/README+++{relfilesuffix}[+++{{ tasks[i].task_name | default('no_name') | replace("|","\|") }}+++]
 | {{ tasks[i].action }}
 | {{ tasks[i].tags | default('[]') | string }}
 {% endif %}
@@ -859,7 +859,7 @@ include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 |====
 |
 [.text-center]
-📒 Plays : *{{ play_results.plays | list | length | string }}* / 🖥️ Hosts: *{{ (play_results.host_results | list | length -1) | string }}* (link:./charts.adoc[view charts])
+📒 Plays : *{{ play_results.plays | list | length | string }}* / 🖥️ Hosts: *{{ (play_results.host_results | list | length -1) | string }}* (link:./charts{relfilesuffix}[view charts])
 
 |
 [.text-center]
@@ -886,7 +886,7 @@ include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 !=====
 ! Play ! 🟢 ! 🔴
 {% for play in play_results.plays | default({}) | reverse %}
-! link:+++plays/{{  play_results.plays[play].filename | replace('!', '\!') | replace('|', '\|') }}/README.adoc+++[+++{{  play_results.plays[play].name  | replace('!', '\!') | replace('|', '\|')  }}+++]
+! link:+++plays/{{  play_results.plays[play].filename | replace('!', '\!') | replace('|', '\|') }}/README+++{relfilesuffix}[+++{{  play_results.plays[play].name  | replace('!', '\!') | replace('|', '\|')  }}+++]
 ! {{ play_results.plays[play].host_results.all.ok | string }}
 ! {{ play_results.plays[play].host_results.all.failed | string }}
 {% endfor %}
@@ -903,8 +903,8 @@ include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 ! Task ! 🟢 ! 🔴 ! 🟡 ! 🟣  ! 🔵 ! ♻️
 {% for task in latest_tasks|reverse %}
 {% set x = latest_tasks[task] %}
-! link:+++plays/{{ x.play_filename  | replace('!', '\!') | replace('|', '\|') }}/README.adoc+++[+++{{ x.play_name | replace('!', '\!') | replace('|', '\|') }}+++]
-! link:+++plays/{{ x.play_filename  | replace('!', '\!') | replace('|', '\|') }}/{{ x.task_filename  | replace('!', '\!') | replace('|', '\|')  }}/README.adoc+++[+++{{ x.task_name | default('no_name', True) | replace('!', '\!') | replace('|', '\|')  }}+++]
+! link:+++plays/{{ x.play_filename  | replace('!', '\!') | replace('|', '\|') }}/README+++{relfilesuffix}[+++{{ x.play_name | replace('!', '\!') | replace('|', '\|') }}+++]
+! link:+++plays/{{ x.play_filename  | replace('!', '\!') | replace('|', '\|') }}/{{ x.task_filename  | replace('!', '\!') | replace('|', '\|')  }}/README+++{relfilesuffix}[+++{{ x.task_name | default('no_name', True) | replace('!', '\!') | replace('|', '\|')  }}+++]
 ! {{ x.all_results.ok | string if x.all_results.ok > 0 else '' }}
 ! {{ x.all_results.failed | string if x.all_results.failed > 0 else '' }}
 ! {{ x.all_results.changed | string if x.all_results.changed > 0 else '' }}
@@ -949,7 +949,7 @@ include::{{ env_rel_path | default('..') }}/.caradoc.css.adoc[]
 {% endfor %}
 
 [.text-center]
-(link:./README.adoc[back to run])
+(link:./README{relfilesuffix}[back to run])
 
 ifdef::chart-width[]
 [cols="a,a"]
@@ -963,7 +963,7 @@ endif::[]
 [.text-center]
 *Results per play* (excluding skipped)
 ifdef::hide-run-link[]
-link:./charts.adoc[🔍]
+link:./charts{relfilesuffix}[🔍]
 endif::[]
 [.text-center]
 [vegalite,format="svg",subs="attributes",width={chart-width}]
@@ -1002,7 +1002,7 @@ endif::[]
 [.text-center]
 *Results per host* (excluding skipped)
 ifdef::hide-run-link[]
-link:./charts.adoc[🔍]
+link:./charts{relfilesuffix}[🔍]
 endif::[]
 [.text-center]
 [vegalite,format="svg",subs="attributes",width={chart-width}]
@@ -1044,13 +1044,23 @@ endif::[]
     env = """
 :toclevels: 2
 // TODO: set env var option for kroki localhost or any url
+ifndef::kroki-server-url[]
 :kroki-server-url: http://localhost:8000
+endif::[]
+ifndef::source-highlighter[]
+:source-highlighter: highlight.js
+endif::[]
+ifndef::source-file-scheme[]
 :source-file-scheme: file://
+endif::[]
 ifdef::env-vscode[]
 :relfilesuffix: .adoc
 :source-file-scheme: vscode://file
-:source-highlighter: highlight.js
 endif::[]
+ifdef::backend-html5[]
+:relfilesuffix: .html
+endif::[]
+
 ifeval::["{caradoc-theme}" != "dark"]
 :caradoc_label_color: black
 endif::[]
