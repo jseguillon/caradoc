@@ -78,7 +78,7 @@ jobs:
         with:
           program: |
             cd .caradoc/*
-            asciidoctor '**/*.adoc' -r asciidoctor-kroki  -a kroki-server-url=https://kroki.io -a source-file-scheme=https://
+            asciidoctor '**/*.adoc' -r asciidoctor-kroki  -a kroki-server-url=https://kroki.io -a source-file-scheme=https:// -a last-update-label="Ansible report by <a href='https://github.com/jseguillon/caradoc'>Caradoc</a> - "
 
       - name: Add index.html redirect
         run: |
