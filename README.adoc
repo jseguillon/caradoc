@@ -19,8 +19,7 @@ ifdef::env-github[]
 endif::[]
 
 image::docs/caradoc-logo.png[]
-
-image::https://github.com/ansible-community/molecule-kubevirt/workflows/tox/badge.svg[https://github.com/ansible-community/molecule-kubevirt/actions]
+image::https://github.com/jseguillon/caradoc/workflows/tox/badge.svg[link=https://github.com/jseguillon/caradoc/actions]
 
 == About the Project
 
