@@ -106,6 +106,7 @@ jobs:
       - name: Add index.html redirect, rewrite src path and add favico
         run: |
           ls -al
+          find ${GITHUB_WORKSPACE}
           target_dir="$(ls -d .caradoc/*/)"
           cp ${GITHUB_WORKSPACE}/docs/favicon.ico $target_dir
           taget_dir_relpath="$(basename $target_dir)"
