@@ -84,7 +84,7 @@ jobs:
           name: debug-${{ matrix.tox_env }}
           path: debug.log
 
-  deploy:
+  deploy_demo:
     runs-on: ubuntu-latest
     needs: build
     # if: github.ref == 'refs/heads/master'
@@ -103,10 +103,11 @@ jobs:
             cd .caradoc/*
             asciidoctor '**/*.adoc' -r asciidoctor-kroki  -a kroki-server-url=https://kroki.io -a source-file-scheme=https:// -a last-update-label="Ansible report by <a href='https://github.com/jseguillon/caradoc'>Caradoc</a> - "
 
-      - name: Add index.html redirect
+      - name: Add index.html redirect, rewrite src path and add favico
         run: |
           ls -al
           target_dir="$(ls -d .caradoc/*/)"
+          cp ${GITHUB_WORKSPACE}/docs/favicon.ico $target_dir
           taget_dir_relpath="$(basename $target_dir)"
           cat <<EOF > .caradoc/index.html
             <html>
