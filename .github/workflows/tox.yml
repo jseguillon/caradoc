@@ -89,7 +89,10 @@ jobs:
     needs: build
     # if: github.ref == 'refs/heads/master'
     steps:
-      - name: Download a single artifact
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Download artifact of one build to create a demo site
         uses: actions/download-artifact@v3
         with:
           name: adoc-py310-ansible_7
@@ -105,8 +108,6 @@ jobs:
 
       - name: Add index.html redirect, rewrite src path and add favico
         run: |
-          ls -al
-          find ${GITHUB_WORKSPACE}
           target_dir="$(ls -d .caradoc/*/)"
           cp ${GITHUB_WORKSPACE}/docs/favicon.ico $target_dir
           taget_dir_relpath="$(basename $target_dir)"
