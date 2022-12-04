@@ -72,6 +72,29 @@ jobs:
           tox -e ${{ matrix.tox_env }} 2> debug.log
           # grep -v -i exception debug.log >/dev/null
 
+      - name: Upload artifact asciidoc
+        uses: actions/upload-artifact@main
+        with:
+          name: adoc-${{ matrix.tox_env }}
+          path: .caradoc
+
+      - name: Upload artifact debug
+        uses: actions/upload-artifact@main
+        with:
+          name: debug-${{ matrix.tox_env }}
+          path: debug.log
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    # if: github.ref == 'refs/heads/master'
+    steps:
+      - name: Download a single artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: adoc-py310-ansible_7
+          path: .caradoc
+
       - name: Build html doc via asciidoctor
         id: adocbuild
         uses: tonynv/asciidoctor-action@master
@@ -82,6 +105,7 @@ jobs:
 
       - name: Add index.html redirect
         run: |
+          ls -al
           target_dir="$(ls -d .caradoc/*/)"
           taget_dir_relpath="$(basename $target_dir)"
           cat <<EOF > .caradoc/index.html
@@ -93,29 +117,13 @@ jobs:
           EOF
           find .caradoc/ -type f -exec sed -i  's#\(/home/runner/work/caradoc/caradoc/\)\([^:]*\):\([^:]*\)#github.com/jseguillon/caradoc/blob/main/\2\#L\3#g'  {} \;
 
-        if: ${{ contains(matrix.tox_env, 'py310-ansible_7') }}
-
-      - name: Upload artifact
+      - name: Upload artifact for pages
         uses: actions/upload-pages-artifact@main
         with:
           name: github-pages
           path: .caradoc
-        if: ${{ contains(matrix.tox_env, 'py310-ansible_7') }}
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@main
-        with:
-          name: github-pages-${{ matrix.tox_env }}
-          path: .caradoc
-        if: ${{ ! contains(matrix.tox_env, 'py310-ansible_7') }}
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@main
-        with:
-          name: debug-${{ matrix.tox_env }}
-          path: debug.log
 
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v1
-        if: ${{ contains(matrix.tox_env, 'py310-ansible_7') }}
+
