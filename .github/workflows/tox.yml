@@ -44,10 +44,6 @@ jobs:
           - tox_env: py310-ansible_7
             python-version: '3.10'
 
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
     steps:
       - name: Check out code
         uses: actions/checkout@v3
@@ -88,6 +84,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     if: github.ref == 'refs/heads/main'
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
       - name: Check out code
         uses: actions/checkout@v3

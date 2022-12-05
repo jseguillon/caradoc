@@ -42,9 +42,8 @@ image::docs/run.png[Run example,200]
 image::docs/playbook.png[Playbook example,200]
 
 | Result
-[#task,link=docs/task.png]
+[#task,link=docs/results.png]
 image::docs/results.png[Results example,200]
-
 
 |====
 
