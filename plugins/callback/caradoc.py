@@ -564,8 +564,8 @@ display = Display()
 
 # Specific Templar that deals with bytecode cache
 class CaradocTemplar(Templar):
-    def __init__(self, loader, shared_loader_obj=None, variables=None):
-        super().__init__(loader, shared_loader_obj, variables)
+    def __init__(self, loader, variables=None):
+        super().__init__(loader, variables)
         self.template_cache = {}
 
     #  Note: the template method is a simplified implementation of Templar. Only fail_on_undefined is supported
