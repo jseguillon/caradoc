@@ -29,6 +29,9 @@ from ansible.errors import (  # noqa: F401
     AnsibleUndefinedVariable,
 )
 
+import ansible
+from distutils.version import LooseVersion
+
 # Ansible CLI options are now in ansible.context in >= 2.8
 # https://github.com/ansible/ansible/commit/afdbb0d9d5bebb91f632f0d4a1364de5393ba17a
 
@@ -564,8 +567,14 @@ display = Display()
 
 # Specific Templar that deals with bytecode cache
 class CaradocTemplar(Templar):
-    def __init__(self, loader, shared_loader_obj=None, variables=None):
-        super().__init__(loader, shared_loader_obj, variables)
+    def __init__(self, loader, variables=None):
+        ansible_version = LooseVersion(ansible.__version__)
+
+        # Check Ansible version
+        if ansible_version < LooseVersion('2.16'):
+            super().__init__(loader, shared_loader_obj=None, variables=variables)
+        else:
+            super().__init__(loader, variables)
         self.template_cache = {}
 
     #  Note: the template method is a simplified implementation of Templar. Only fail_on_undefined is supported

@@ -8,6 +8,8 @@ on:
     branches:  # any integration branch but not tag
       - "main"
   pull_request:
+    branches:
+      - "main"
   schedule:
     - cron: 1 0 * * *  # Run daily at 0:01 UTC
 
@@ -33,16 +35,14 @@ jobs:
         include:
           - tox_env: lint
             python-version: '3.10'
-          # - tox_env: py37-ansible_2
-          #   python-version: '3.7'
-          - tox_env: py37-ansible_4
-            python-version: '3.7'
-          - tox_env: py38-ansible_5
-            python-version: '3.8'
           - tox_env: py39-ansible_6
-            python-version: '3.9'
-          - tox_env: py310-ansible_7
             python-version: '3.10'
+          - tox_env: py310-ansible_7
+            python-version: '3.11'
+          - tox_env: py311-ansible_8
+            python-version: '3.11'
+          - tox_env: py311-ansible_8
+            python-version: '3.12'
 
     steps:
       - name: Check out code
