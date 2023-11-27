@@ -43,7 +43,10 @@ jobs:
             python-version: '3.11'
           - tox_env: py311-ansible_8
             python-version: '3.12'
-
+          - tox_env: py311-ansible_9
+            python-version: '3.11'
+          - tox_env: py311-ansible_9
+            python-version: '3.12'
     steps:
       - name: Check out code
         uses: actions/checkout@v3
