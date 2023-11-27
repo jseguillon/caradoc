@@ -35,15 +35,18 @@ jobs:
         include:
           - tox_env: lint
             python-version: '3.10'
-          - tox_env: py39-ansible_6
+          - tox_env: py10-ansible_6
             python-version: '3.10'
           - tox_env: py310-ansible_7
-            python-version: '3.11'
+            python-version: '3.10'
           - tox_env: py311-ansible_8
             python-version: '3.11'
-          - tox_env: py311-ansible_8
+          - tox_env: py312-ansible_8
             python-version: '3.12'
-
+          - tox_env: py311-ansible_9
+            python-version: '3.11'
+          - tox_env: py312-ansible_9
+            python-version: '3.12'
     steps:
       - name: Check out code
         uses: actions/checkout@v3
